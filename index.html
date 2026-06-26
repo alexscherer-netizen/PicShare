@@ -88,7 +88,20 @@
   .tile .favbadge svg{width:16px; height:16px}
   .tile.is-fav .favbadge{background:var(--fav); border-color:var(--fav)}
   .tile.is-fav .favbadge svg{fill:#000; stroke:#000}
+  /* Auswahl-Badge (＋) links oben */
+  .tile .selbadge{
+    position:absolute; top:8px; left:8px; min-width:30px; height:30px; border-radius:16px; padding:0 8px;
+    background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; gap:3px;
+    border:1px solid rgba(255,255,255,.25); transition:.15s; font-size:15px; font-weight:700; color:#fff;
+  }
+  .tile.is-sel .selbadge{background:var(--accent); border-color:var(--accent); color:#000}
+  .tile.is-sel{outline:2px solid var(--accent); outline-offset:-2px}
+  .tile .selnum{font-size:12px; font-weight:700}
   .tile .cmtbadge{position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,.6); border-radius:20px; padding:2px 8px; font-size:11px; display:flex; gap:4px; align-items:center}
+  /* Nach Bestätigung: nicht gewählte abdunkeln, gewählte hervorheben */
+  .grid-confirmed .tile:not(.is-sel){opacity:.32; filter:grayscale(.6)}
+  .grid-confirmed .tile.is-sel{outline:2px solid var(--ok); outline-offset:-2px}
+  .grid-confirmed .tile:not(.is-sel) .selbadge{display:none}
 
   /* Modal */
   .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.85); backdrop-filter:blur(4px); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px}
@@ -308,7 +321,8 @@ function renderAdminList(){
         <div class="hr"></div>
         <div style="display:flex; gap:16px; font-size:13px" class="muted">
           <span>${g.image_count} Fotos</span>
-          <span>★ ${g.favorite_count} Favoriten</span>
+          <span>＋ ${g.selected_count??0} Auswahl</span>
+          <span>❤ ${g.favorite_count} Fav</span>
         </div>
         <div style="margin-top:12px; display:flex; gap:8px">
           <button class="btn sm" data-open="${g.id}">Öffnen</button>
@@ -384,12 +398,13 @@ async function openAdminGallery(gid){
 function renderAdminGallery(){
   const {gallery,images,comments}=AdminState.current;
   const favs=images.filter(i=>i.favorited);
+  const sels=images.filter(i=>i.selected);
   app.innerHTML=adminTopbar(`<button class="btn sm ghost" id="backBtn">← Galerien</button>`)+`
   <div class="wrap" style="padding:22px 16px 60px">
     <div style="display:flex; align-items:start; gap:14px; flex-wrap:wrap">
       <div style="flex:1; min-width:200px">
         <h2 style="margin:0; font-size:22px">${esc(gallery.title)}</h2>
-        <p class="muted" style="margin:4px 0 0; font-size:13px">${gallery.client_name?esc(gallery.client_name)+" · ":""}${images.length} Fotos · ★ ${favs.length} Favoriten${gallery.selection_limit?" / "+gallery.selection_limit:""}${gallery.confirmed?' · <span style="color:var(--ok)">✓ bestätigt</span>':''}</p>
+        <p class="muted" style="margin:4px 0 0; font-size:13px">${gallery.client_name?esc(gallery.client_name)+" · ":""}${images.length} Fotos · ＋ ${sels.length} Auswahl${gallery.selection_limit?" / "+gallery.selection_limit:""} · ❤ ${favs.length} Fav${gallery.confirmed?' · <span style="color:var(--ok)">✓ bestätigt</span>':''}</p>
         <p class="muted2" style="margin:4px 0 0; font-size:12px">HiDrive: ${esc(gallery.hidrive_path)}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
@@ -402,8 +417,10 @@ function renderAdminGallery(){
     ${comments.length?`<div class="card" style="margin-top:18px; padding:14px 18px"><b style="font-size:14px">Kundenkommentare (${comments.length})</b><div style="margin-top:10px; max-height:160px; overflow:auto">${comments.map(c=>{const im=images.find(i=>i.id===c.image_id); return `<div style="font-size:13px; margin-bottom:8px"><span class="muted2">${im?esc(im.filename):'?'} · ${new Date(c.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><br>${esc(c.body)}</div>`;}).join("")}</div></div>`:""}
     <div class="pill-row" style="margin-top:18px">
       <button class="btn sm ghost" id="aFltAll">Alle (${images.length})</button>
-      <button class="btn sm ghost" id="aFltFav">★ Auswahl (${favs.length})</button>
-      <button class="btn sm ghost" id="exportFav">Auswahl exportieren</button>
+      <button class="btn sm ghost" id="aFltSel">＋ Auswahl (${sels.length})</button>
+      <button class="btn sm ghost" id="aFltFav">❤ Favoriten (${favs.length})</button>
+      <button class="btn sm ghost" id="exportSel">Auswahl exportieren</button>
+      ${sels.length?`<button class="btn sm ghost" id="aZip">⤓ Auswahl als ZIP</button>`:""}
     </div>
     <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
     <div class="photo-grid" id="aGrid"></div>
@@ -416,8 +433,10 @@ function renderAdminGallery(){
   $("#uploadBtn").onclick=()=>$("#fileInput").click();
   $("#fileInput").onchange=handleUpload;
   $("#aFltAll").onclick=()=>drawAdminGrid("all");
+  $("#aFltSel").onclick=()=>drawAdminGrid("sel");
   $("#aFltFav").onclick=()=>drawAdminGrid("fav");
-  $("#exportFav").onclick=exportFavorites;
+  $("#exportSel").onclick=exportSelection;
+  const az=$("#aZip"); if(az) az.onclick=adminDownloadZip;
   drawAdminGrid("all");
 }
 
@@ -448,24 +467,26 @@ function drawAdminGrid(filter){
   const {gallery,images}=AdminState.current;
   let imgs=images;
   if(filter==="fav") imgs=imgs.filter(i=>i.favorited);
+  if(filter==="sel") imgs=imgs.filter(i=>i.selected);
   const grid=$("#aGrid");
   if(!imgs.length){ grid.innerHTML="<div class='empty' style='grid-column:1/-1'>Keine Fotos. Lade welche hoch oder lies den HiDrive-Ordner ein.</div>"; return; }
   grid.innerHTML=imgs.map(img=>{
     const cc=AdminState.current.comments.filter(c=>c.image_id===img.id).length;
-    return `<div class="tile ${img.favorited?'is-fav':''}">
+    return `<div class="tile ${img.favorited?'is-fav':''} ${img.selected?'is-sel':''}">
       <img loading="lazy" src="${thumbUrl(img)}" alt="">
-      <div class="favbadge"><svg viewBox="0 0 24 24" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg></div>
+      ${img.selected?`<div class="selbadge" style="pointer-events:none">＋</div>`:""}
+      <div class="favbadge" style="pointer-events:none"><svg viewBox="0 0 24 24" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg></div>
       ${cc?`<div class="cmtbadge">💬 ${cc}</div>`:""}
       ${!img.thumb_path?`<div class="cmtbadge" style="left:auto; right:8px; bottom:8px; background:rgba(120,80,0,.7)">kein Thumb</div>`:""}
     </div>`;
   }).join("");
 }
 
-function exportFavorites(){
-  const favs=AdminState.current.images.filter(i=>i.favorited);
-  if(!favs.length){ toast("Keine Favoriten.", true); return; }
-  const list=favs.map(i=>i.filename).join("\n");
-  showModal(`<h3>Ausgewählte Fotos (${favs.length})</h3>
+function exportSelection(){
+  const sels=AdminState.current.images.filter(i=>i.selected);
+  if(!sels.length){ toast("Keine Auswahl getroffen.", true); return; }
+  const list=sels.map(i=>i.filename).join("\n");
+  showModal(`<h3>Auswahl (${sels.length} Fotos)</h3>
     <textarea class="inp" style="min-height:200px; font-family:monospace; font-size:13px" onclick="this.select()">${esc(list)}</textarea>
     <div style="display:flex; gap:10px; margin-top:14px">
       <button class="btn ghost" style="flex:1" id="mCopy">Kopieren</button>
@@ -474,6 +495,16 @@ function exportFavorites(){
     $("#mCopy").onclick=()=>{ navigator.clipboard.writeText(list); toast("Kopiert"); };
     $("#mDl").onclick=()=>{ const b=new Blob([list],{type:"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=AdminState.current.gallery.title.replace(/\s+/g,"_")+"_auswahl.txt"; a.click(); };
   });
+}
+
+async function adminDownloadZip(){
+  const gid=AdminState.current.gallery.id;
+  try{
+    toast("ZIP wird vorbereitet…");
+    // Admin nutzt einen kurzlebigen DL-Token analog Kunde, aber über Admin-Token autorisiert
+    const r=await api("admin_zip_token",{gallery_id:gid, which:"selected"}, AdminState.token);
+    window.location.href=r.url;
+  }catch(e){ toast(e.message, true); }
 }
 
 // ---------- Thumbnail-Generierung (Client) ----------
@@ -618,38 +649,54 @@ async function loadGallery(){
 }
 
 function favCount(){ return ClientState.images.filter(i=>i.favorited).length; }
+function selCount(){ return ClientState.images.filter(i=>i.selected).length; }
 function commentsFor(imgId){ return ClientState.comments.filter(c=>c.image_id===imgId); }
+function selOrder(imgId){ // 1-basierte Position in der Auswahl
+  const sel=ClientState.images.filter(i=>i.selected);
+  return sel.findIndex(i=>i.id===imgId)+1;
+}
 
 function renderGalleryView(){
   const g=ClientState.gallery, imgs=ClientState.images;
   const limit=g.selection_limit;
-  const fc=favCount();
+  const sc=selCount(), fc=favCount();
+  const confirmed=g.confirmed;
   app.innerHTML = `
   <header class="topbar"><div class="wrap"><div class="row">
     <div class="brand"><span class="dot"></span> ${esc(g.title)}</div>
     <div class="spacer"></div>
     <span class="tag">${imgs.length} Fotos</span>
-    <span class="tag" id="favTag">★ ${fc}${limit?" / "+limit:""}</span>
-    ${g.confirmed?'<span class="tag" style="border-color:#2a4a2a; color:var(--ok)">✓ bestätigt</span>':''}
+    <span class="tag" id="favTag">❤ ${fc}</span>
+    <span class="tag" id="selTag">＋ ${sc}${limit?" / "+limit:""}</span>
+    ${confirmed?'<span class="tag" style="border-color:#2a4a2a; color:var(--ok)">✓ bestätigt</span>':''}
   </div></div></header>
   <div class="wrap" style="padding-top:18px; padding-bottom:90px">
     ${g.client_name?`<p class="muted" style="margin:0 0 16px">Für ${esc(g.client_name)}</p>`:""}
-    ${limit?`<div class="card" style="padding:14px 18px; margin-bottom:18px">
-      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
-        <span class="muted">Deine Auswahl</span><span class="mono"><b id="favNum">${fc}</b> von ${limit}</span>
+    ${confirmed?`<div class="card" style="padding:14px 18px; margin-bottom:18px; border-color:#2a4a2a">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span style="font-size:20px">✓</span>
+        <div><b style="color:var(--ok)">Auswahl bestätigt</b><div class="muted" style="font-size:13px">${sc} Foto${sc===1?"":"s"} ausgewählt. Die nicht gewählten Bilder sind ausgegraut.</div></div>
       </div>
-      <div class="progress"><div id="favBar" style="width:${Math.min(100,fc/limit*100)}%"></div></div>
-    </div>`:""}
+    </div>`:(limit?`<div class="card" style="padding:14px 18px; margin-bottom:18px">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
+        <span class="muted">Deine Auswahl (＋)</span><span class="mono"><b id="selNum">${sc}</b> von ${limit}</span>
+      </div>
+      <div class="progress"><div id="selBar" style="width:${Math.min(100,sc/limit*100)}%"></div></div>
+    </div>`:"")}
     <div class="pill-row">
       <button class="btn sm ghost" id="fltAll">Alle</button>
-      <button class="btn sm ghost" id="fltFav">★ Favoriten</button>
+      <button class="btn sm ghost" id="fltSel">＋ Auswahl</button>
+      <button class="btn sm ghost" id="fltFav">❤ Favoriten</button>
+      ${(g.download_enabled && sc>0)?`<button class="btn sm ghost" id="zipSel">⤓ Auswahl als ZIP</button>`:""}
     </div>
-    <div class="photo-grid" id="grid"></div>
+    <div class="photo-grid${confirmed?' grid-confirmed':''}" id="grid"></div>
     ${legalFooter()}
   </div>
   <div id="confirmBar"></div>`;
   $("#fltAll").onclick=()=>drawGrid("all");
+  $("#fltSel").onclick=()=>drawGrid("sel");
   $("#fltFav").onclick=()=>drawGrid("fav");
+  const zb=$("#zipSel"); if(zb) zb.onclick=()=>downloadZip("selected");
   drawGrid("all");
   renderConfirmBar();
   wireLegalFooter();
@@ -665,7 +712,11 @@ function showWelcome(){
   bg.innerHTML=`<div class="modal" style="max-width:520px">
     <h3 style="margin-bottom:8px">Willkommen${g.client_name?", "+esc(g.client_name):""}</h3>
     <div style="font-size:14px; line-height:1.6; color:var(--txt); max-height:50vh; overflow:auto">${html}</div>
-    <button class="btn primary" id="welcomeOk" style="width:100%; justify-content:center; margin-top:20px">Zur Galerie</button>
+    <div style="background:var(--panel2); border:1px solid var(--line2); border-radius:6px; padding:12px 14px; margin-top:16px; font-size:13px; line-height:1.6">
+      <b>＋</b> markiert deine <b>finale Auswahl</b> (zählt für die Bestellung).<br>
+      <b>❤</b> ist deine persönliche Merkliste – unverbindlich.
+    </div>
+    <button class="btn primary" id="welcomeOk" style="width:100%; justify-content:center; margin-top:18px">Zur Galerie</button>
   </div>`;
   document.body.appendChild(bg);
   bg.querySelector("#welcomeOk").onclick=()=>bg.remove();
@@ -676,64 +727,95 @@ function drawGrid(filter){
   const grid=$("#grid");
   let imgs=ClientState.images;
   if(filter==="fav") imgs=imgs.filter(i=>i.favorited);
+  if(filter==="sel") imgs=imgs.filter(i=>i.selected);
   if(!imgs.length){ grid.innerHTML="<div class='empty' style='grid-column:1/-1'>Keine Fotos.</div>"; return; }
   const wm=ClientState.gallery.watermark_enabled;
+  const confirmed=ClientState.gallery.confirmed;
   grid.innerHTML=imgs.map(img=>{
     const idx=ClientState.images.indexOf(img);
     const cc=commentsFor(img.id).length;
-    return `<div class="tile ${img.favorited?'is-fav':''}" data-idx="${idx}">
+    const order=img.selected?selOrder(img.id):0;
+    return `<div class="tile ${img.favorited?'is-fav':''} ${img.selected?'is-sel':''}" data-idx="${idx}">
       <img loading="lazy" src="${thumbUrl(img)}" alt="">
       ${wm?`<div class="wm"><img src="${CONFIG.WATERMARK}"></div>`:""}
+      ${confirmed?"":`<div class="selbadge" data-sel="${img.id}">${img.selected?`<span class="selnum">${order}</span>`:"＋"}</div>`}
       <div class="favbadge" data-fav="${img.id}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg>
+        <svg viewBox="0 0 24 24" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg>
       </div>
       ${cc?`<div class="cmtbadge">💬 ${cc}</div>`:""}
     </div>`;
   }).join("");
   grid.querySelectorAll(".tile").forEach(t=>{
     t.querySelector("img").onclick=()=>openLightbox(+t.dataset.idx);
-    if(ClientState.gallery.watermark_enabled){ const w=t.querySelector(".wm"); if(w) w.onclick=()=>openLightbox(+t.dataset.idx); }
+    if(wm){ const w=t.querySelector(".wm"); if(w) w.onclick=()=>openLightbox(+t.dataset.idx); }
+    const sb=t.querySelector(".selbadge"); if(sb) sb.onclick=e=>{ e.stopPropagation(); toggleSelect(sb.dataset.sel); };
     t.querySelector(".favbadge").onclick=e=>{ e.stopPropagation(); toggleFav(t.querySelector(".favbadge").dataset.fav); };
   });
+}
+
+function currentFilter(){
+  // welcher Filter-Button ist gerade „aktiv"? Wir merken es am simpelsten neu zeichnend auf "all".
+  return "all";
 }
 
 async function toggleFav(imageId){
   try{
     const r=await api("gallery_toggle_fav",{gallery_id:ClientState.gid, image_id:imageId}, ClientState.token);
     const img=ClientState.images.find(i=>i.id===imageId); if(img) img.favorited=r.favorited;
-    syncFavUI();
-    // aktuellen Filter neu zeichnen
-    const favFilterActive=false; drawGrid("all");
-    if(ClientState.lb>=0) updateLightboxFav();
+    syncCounts();
+    drawGrid("all");
+    if(ClientState.lb>=0) drawLightbox();
   }catch(e){ toast(e.message, true); }
 }
 
-function syncFavUI(){
-  const fc=favCount(), limit=ClientState.gallery.selection_limit;
-  const ft=$("#favTag"); if(ft) ft.textContent=`★ ${fc}${limit?" / "+limit:""}`;
-  const fn=$("#favNum"); if(fn) fn.textContent=fc;
-  const fb=$("#favBar"); if(fb&&limit) fb.style.width=Math.min(100,fc/limit*100)+"%";
+async function toggleSelect(imageId){
+  if(ClientState.gallery.confirmed){ toast("Auswahl ist bereits bestätigt.", true); return; }
+  try{
+    const r=await api("gallery_toggle_select",{gallery_id:ClientState.gid, image_id:imageId}, ClientState.token);
+    const img=ClientState.images.find(i=>i.id===imageId); if(img) img.selected=r.selected;
+    syncCounts();
+    drawGrid("all");
+    renderConfirmBar();
+    if(ClientState.lb>=0) drawLightbox();
+  }catch(e){ toast(e.message, true); }
+}
+
+function syncCounts(){
+  const sc=selCount(), fc=favCount(), limit=ClientState.gallery.selection_limit;
+  const st=$("#selTag"); if(st) st.textContent=`＋ ${sc}${limit?" / "+limit:""}`;
+  const ft=$("#favTag"); if(ft) ft.textContent=`❤ ${fc}`;
+  const sn=$("#selNum"); if(sn) sn.textContent=sc;
+  const sb=$("#selBar"); if(sb&&limit) sb.style.width=Math.min(100,sc/limit*100)+"%";
+}
+
+async function downloadZip(which){
+  try{
+    toast("ZIP wird vorbereitet… das kann je nach Anzahl etwas dauern.");
+    const r=await api("gallery_zip_token",{gallery_id:ClientState.gid, which}, ClientState.token);
+    window.location.href=r.url; // Browser lädt das ZIP
+  }catch(e){ toast(e.message, true); }
 }
 
 function renderConfirmBar(){
   const bar=$("#confirmBar"); if(!bar) return;
   const g=ClientState.gallery;
   if(g.confirmed){ bar.innerHTML=""; return; }
+  const sc=selCount();
   bar.innerHTML=`<div style="position:fixed; bottom:0; left:0; right:0; background:rgba(10,10,10,.92); backdrop-filter:blur(10px); border-top:1px solid var(--line); padding:12px 16px; z-index:40">
     <div class="wrap" style="display:flex; align-items:center; gap:12px">
-      <span class="muted" style="font-size:13px" id="cbInfo">${favCount()} Fotos ausgewählt</span>
+      <span class="muted" style="font-size:13px" id="cbInfo">${sc} Foto${sc===1?"":"s"} in der Auswahl (＋)</span>
       <div class="spacer"></div>
-      <button class="btn primary" id="confirmBtn">Auswahl bestätigen</button>
+      <button class="btn primary" id="confirmBtn"${sc===0?" disabled":""}>Auswahl bestätigen</button>
     </div></div>`;
-  $("#confirmBtn").onclick=confirmSelection;
+  const cb=$("#confirmBtn"); if(cb) cb.onclick=confirmSelection;
 }
 
 function confirmSelection(){
-  const fc=favCount();
-  if(fc===0){ toast("Bitte wähle zuerst Fotos aus.", true); return; }
+  const sc=selCount();
+  if(sc===0){ toast("Bitte triff zuerst eine Auswahl mit ＋.", true); return; }
   showModal(`
     <h3>Auswahl bestätigen</h3>
-    <p class="muted" style="margin-top:0">Du bestätigst deine Auswahl von <b style="color:var(--txt)">${fc} Foto${fc===1?"":"s"}</b>. Der Fotograf wird informiert. Danach ist die Auswahl final.</p>
+    <p class="muted" style="margin-top:0">Du bestätigst deine Auswahl von <b style="color:var(--txt)">${sc} Foto${sc===1?"":"s"}</b>. Der Fotograf wird informiert. Danach lässt sich die Auswahl nicht mehr ändern.</p>
     <div style="display:flex; gap:10px; margin-top:20px">
       <button class="btn ghost" style="flex:1" id="mCancel">Abbrechen</button>
       <button class="btn primary" style="flex:1" id="mOk">Bestätigen</button>
@@ -759,7 +841,7 @@ function closeLightbox(){
   ClientState.lb=-1;
   const lb=$("#lightbox"); if(lb) lb.remove();
   document.removeEventListener("keydown", lbKeys);
-  drawGrid("all"); syncFavUI();
+  drawGrid("all"); syncCounts();
 }
 function lbKeys(e){
   if(e.key==="Escape") closeLightbox();
@@ -799,9 +881,11 @@ function drawLightbox(){
       <span class="muted2 mono" style="font-size:13px">${ClientState.lb+1} / ${ClientState.images.length}</span>
       <span class="muted" style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(img.filename)}</span>
       <div class="spacer"></div>
+      ${g.confirmed?"":`<button class="btn sm ${img.selected?'primary':''}" id="lbSel">
+        ${img.selected?`✓ Ausgewählt (${selOrder(img.id)})`:'＋ Auswählen'}
+      </button>`}
       <button class="btn sm ${img.favorited?'primary':''}" id="lbFav">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg>
-        ${img.favorited?'Favorit':'Favorisieren'}
       </button>
       <button class="btn sm ghost" id="lbCmtToggle">💬 ${cmts.length}</button>
       ${g.download_enabled?`<button class="btn sm ghost" id="lbDl">⤓ Download</button>`:""}
@@ -810,6 +894,7 @@ function drawLightbox(){
   $("#lbPrev").onclick=()=>lbNav(-1);
   $("#lbNext").onclick=()=>lbNav(1);
   $("#lbClose").onclick=closeLightbox;
+  const ls=$("#lbSel"); if(ls) ls.onclick=()=>toggleSelect(img.id);
   $("#lbFav").onclick=()=>toggleFav(img.id);
   $("#lbCmtToggle").onclick=()=>$("#lbSide").classList.toggle("open");
   $("#lbSideClose").onclick=()=>$("#lbSide").classList.remove("open");
