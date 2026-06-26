@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>PicShare</title>
+<link rel="manifest" href="data:application/json,%7B%22name%22%3A%22PicShare%22%2C%22short_name%22%3A%22PicShare%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23000000%22%2C%22theme_color%22%3A%22%23000000%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%253D%2522http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2522%2520viewBox%253D%25220%25200%2520100%2520100%2522%253E%253Crect%2520width%253D%2522100%2522%2520height%253D%2522100%2522%2520fill%253D%2522%2523000%2522%252F%253E%253Ctext%2520x%253D%252250%2522%2520y%253D%252265%2522%2520font-size%253D%252260%2522%2520text-anchor%253D%2522middle%2522%2520fill%253D%2522%2523fff%2522%253EP%253C%252Ftext%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#141414; --panel2:#1c1c1c;
+    --line:#2a2a2a; --line2:#383838;
+    --txt:#f2f2f2; --muted:#9a9a9a; --muted2:#6a6a6a;
+    --accent:#ffffff; --accent-ink:#000000;
+    --fav:#ffffff; --danger:#ff5a5a; --ok:#4ade80;
+    --r:4px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    font-size:15px; line-height:1.5; min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit}
+  button{font-family:inherit; cursor:pointer}
+  input,textarea,select{font-family:inherit}
+  .mono{font-variant-numeric:tabular-nums}
+
+  /* Layout */
+  .wrap{max-width:1200px; margin:0 auto; padding:0 16px}
+  header.topbar{
+    position:sticky; top:0; z-index:50;
+    background:rgba(10,10,10,.85); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar .row{display:flex; align-items:center; gap:14px; height:58px}
+  .brand{font-weight:700; letter-spacing:.5px; font-size:17px; display:flex; align-items:center; gap:8px}
+  .brand .dot{width:9px; height:9px; background:var(--accent); border-radius:50%; display:inline-block}
+  .spacer{flex:1}
+
+  /* Buttons */
+  .btn{
+    background:var(--panel2); color:var(--txt); border:1px solid var(--line2);
+    padding:9px 16px; border-radius:var(--r); font-size:14px; font-weight:500;
+    transition:.15s; display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+  }
+  .btn:hover{border-color:#555; background:#242424}
+  .btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600}
+  .btn.primary:hover{background:#e2e2e2}
+  .btn.ghost{background:transparent; border-color:var(--line2)}
+  .btn.danger{color:var(--danger); border-color:#4a2a2a}
+  .btn.danger:hover{background:#2a1818}
+  .btn.sm{padding:6px 11px; font-size:13px}
+  .btn:disabled{opacity:.4; cursor:not-allowed}
+
+  /* Inputs */
+  label.fld{display:block; margin-bottom:14px}
+  label.fld span{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+  .inp{
+    width:100%; background:var(--panel); border:1px solid var(--line2);
+    color:var(--txt); padding:11px 13px; border-radius:var(--r); font-size:15px; outline:none;
+  }
+  .inp:focus{border-color:#666}
+  textarea.inp{resize:vertical; min-height:70px}
+
+  /* Cards */
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px}
+  .grid-cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px}
+
+  /* Gallery grid */
+  .photo-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px}
+  @media(min-width:700px){ .photo-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px} }
+  .tile{
+    position:relative; aspect-ratio:3/2; background:var(--panel2);
+    border-radius:var(--r); overflow:hidden; cursor:pointer; border:1px solid var(--line);
+  }
+  .tile img{width:100%; height:100%; object-fit:cover; display:block; transition:.3s}
+  .tile:hover img{transform:scale(1.04)}
+  .tile .wm{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; opacity:.5}
+  .tile .wm img{width:42%; height:auto; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,.6))}
+  .tile .favbadge{
+    position:absolute; top:8px; right:8px; width:30px; height:30px; border-radius:50%;
+    background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center;
+    border:1px solid rgba(255,255,255,.25); transition:.15s;
+  }
+  .tile .favbadge svg{width:16px; height:16px}
+  .tile.is-fav .favbadge{background:var(--fav); border-color:var(--fav)}
+  .tile.is-fav .favbadge svg{fill:#000; stroke:#000}
+  .tile .cmtbadge{position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,.6); border-radius:20px; padding:2px 8px; font-size:11px; display:flex; gap:4px; align-items:center}
+
+  /* Modal */
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.85); backdrop-filter:blur(4px); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px}
+  .modal{background:var(--panel); border:1px solid var(--line2); border-radius:10px; max-width:480px; width:100%; padding:26px; animation:pop .18s ease}
+  @keyframes pop{from{transform:scale(.96); opacity:0} to{transform:scale(1); opacity:1}}
+  .modal h3{margin:0 0 16px; font-size:19px}
+
+  /* Lightbox */
+  .lightbox{position:fixed; inset:0; background:#000; z-index:120; display:flex; flex-direction:column}
+  .lb-stage{flex:1; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden}
+  .lb-stage img{max-width:100%; max-height:100%; object-fit:contain}
+  .lb-wm{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; opacity:.45}
+  .lb-wm img{width:30%; filter:drop-shadow(0 2px 8px rgba(0,0,0,.7))}
+  .lb-nav{position:absolute; top:50%; transform:translateY(-50%); width:52px; height:80px; background:rgba(20,20,20,.6); border:none; color:#fff; font-size:26px; display:flex; align-items:center; justify-content:center; border-radius:6px}
+  .lb-nav.prev{left:14px} .lb-nav.next{right:14px}
+  .lb-bar{display:flex; align-items:center; gap:12px; padding:14px 18px; border-top:1px solid #1c1c1c; background:#0a0a0a}
+  .lb-side{position:absolute; right:0; top:0; bottom:0; width:320px; max-width:85vw; background:#0d0d0d; border-left:1px solid var(--line); transform:translateX(100%); transition:.25s; display:flex; flex-direction:column; z-index:5}
+  .lb-side.open{transform:translateX(0)}
+
+  /* Misc */
+  .muted{color:var(--muted)} .muted2{color:var(--muted2)}
+  .tag{display:inline-block; background:var(--panel2); border:1px solid var(--line2); border-radius:20px; padding:2px 10px; font-size:12px; color:var(--muted)}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#fff; color:#000; padding:11px 18px; border-radius:6px; font-weight:600; font-size:14px; z-index:200; animation:pop .2s ease; box-shadow:0 6px 24px rgba(0,0,0,.5)}
+  .toast.err{background:var(--danger); color:#fff}
+  .empty{text-align:center; padding:60px 20px; color:var(--muted2)}
+  .hr{height:1px; background:var(--line); margin:18px 0; border:0}
+  .pill-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px}
+  .progress{height:6px; background:var(--panel2); border-radius:6px; overflow:hidden}
+  .progress>div{height:100%; background:var(--accent); transition:.3s}
+  .hidden{display:none!important}
+
+  /* PIN gate */
+  .gate{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px}
+  .gate .card{max-width:380px; width:100%; text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ======= KONFIG =======
+const CONFIG = {
+  FN_URL: "https://ugitunttmvswyxmyhnjb.supabase.co/functions/v1/picshare",
+  THUMB_BASE: "https://ugitunttmvswyxmyhnjb.supabase.co/storage/v1/object/public/picshare-thumbs/",
+  // Logo-Wasserzeichen (Daten-URL oder https). Platzhalter -> in Admin änderbar (localStorage).
+  WATERMARK: localStorage.getItem("picshare_wm") || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 60'><text x='100' y='40' font-family='Arial' font-size='30' font-weight='bold' text-anchor='middle' fill='white'>LOGO</text></svg>"
+};
+
+// ======= STATE / HELPERS =======
+const $ = (s,el=document)=>el.querySelector(s);
+const app = $("#app");
+let TOAST_T;
+function toast(msg, err=false){
+  clearTimeout(TOAST_T);
+  let t=$(".toast"); if(t) t.remove();
+  t=document.createElement("div"); t.className="toast"+(err?" err":""); t.textContent=msg;
+  document.body.appendChild(t); TOAST_T=setTimeout(()=>t.remove(),2600);
+}
+async function api(action, body, token){
+  const headers={"Content-Type":"application/json"};
+  if(token) headers["Authorization"]="Bearer "+token;
+  const res=await fetch(CONFIG.FN_URL+"?action="+action,{method:"POST",headers,body:JSON.stringify(body||{})});
+  const data=await res.json().catch(()=>({error:"bad response"}));
+  if(!res.ok) throw new Error(data.error||("HTTP "+res.status));
+  return data;
+}
+function esc(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+// Router: ?g=<galleryId> -> Kundenansicht, sonst Admin
+const params = new URLSearchParams(location.search);
+const GALLERY_ID = params.get("g");
+
+// ============================================================
+// ====================  ADMIN-BEREICH  =======================
+// ============================================================
+const AdminState = { token:localStorage.getItem("picshare_atok")||null, galleries:[], current:null };
+
+function renderAdmin(){
+  if(!AdminState.token){ renderAdminLogin(); return; }
+  loadAdminGalleries();
+}
+
+function renderAdminLogin(msg){
+  app.innerHTML=`
+  <div class="gate"><div class="card">
+    <div class="brand" style="justify-content:center; margin-bottom:6px"><span class="dot"></span> PicShare</div>
+    <p class="muted" style="margin:0 0 22px">Admin-Bereich</p>
+    <label class="fld"><span>Benutzername</span><input class="inp" id="auser" autocomplete="username"></label>
+    <label class="fld"><span>Passwort</span><input class="inp" id="apass" type="password" autocomplete="current-password"></label>
+    ${msg?`<p style="color:var(--danger); font-size:13px; margin:-4px 0 14px">${esc(msg)}</p>`:""}
+    <button class="btn primary" id="aLogin" style="width:100%; justify-content:center">Anmelden</button>
+  </div></div>`;
+  const go=async()=>{
+    const username=$("#auser").value.trim(), password=$("#apass").value;
+    if(!username||!password) return;
+    $("#aLogin").disabled=true; $("#aLogin").textContent="…";
+    try{
+      const r=await api("admin_login",{username,password});
+      AdminState.token=r.token; localStorage.setItem("picshare_atok",r.token);
+      loadAdminGalleries();
+    }catch(e){ renderAdminLogin(e.message); }
+  };
+  $("#aLogin").onclick=go;
+  $("#apass").onkeydown=e=>{ if(e.key==="Enter") go(); };
+}
+
+function adminTopbar(extra=""){
+  return `<header class="topbar"><div class="wrap"><div class="row">
+    <div class="brand"><span class="dot"></span> PicShare <span class="muted2" style="font-weight:400; font-size:13px">Admin</span></div>
+    <div class="spacer"></div>${extra}
+    <button class="btn sm ghost" id="wmBtn">Logo</button>
+    <button class="btn sm ghost" id="logoutBtn">Abmelden</button>
+  </div></div></header>`;
+}
+function wireTopbar(){
+  $("#logoutBtn").onclick=()=>{ localStorage.removeItem("picshare_atok"); AdminState.token=null; renderAdminLogin(); };
+  $("#wmBtn").onclick=editWatermark;
+}
+function editWatermark(){
+  showModal(`<h3>Logo-Wasserzeichen</h3>
+    <p class="muted" style="margin-top:0; font-size:13px">Bild-URL oder Daten-URL deines Logos (PNG mit Transparenz empfohlen). Wird über Vorschaubilder gelegt.</p>
+    <label class="fld"><span>Logo-URL</span><input class="inp" id="wmUrl" value="${esc(CONFIG.WATERMARK)}"></label>
+    <div style="text-align:center; margin:10px 0"><img src="${CONFIG.WATERMARK}" style="max-height:60px; max-width:100%; background:#333; padding:8px; border-radius:6px"></div>
+    <label class="fld"><span>oder Datei hochladen</span><input class="inp" id="wmFile" type="file" accept="image/*"></label>
+    <div style="display:flex; gap:10px; margin-top:16px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mS">Speichern</button>
+    </div>`,(close)=>{
+    $("#wmFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>$("#wmUrl").value=rd.result; rd.readAsDataURL(f); };
+    $("#mC").onclick=close;
+    $("#mS").onclick=()=>{ const v=$("#wmUrl").value.trim(); if(v){ CONFIG.WATERMARK=v; localStorage.setItem("picshare_wm",v); toast("Logo gespeichert"); } close(); };
+  });
+}
+
+async function loadAdminGalleries(){
+  app.innerHTML=adminTopbar()+"<div class='wrap'><div class='empty'>Lädt…</div></div>";
+  wireTopbar();
+  try{
+    const r=await api("admin_list_galleries",{},AdminState.token);
+    AdminState.galleries=r.galleries||[];
+    renderAdminList();
+  }catch(e){
+    if(/unauthorized/i.test(e.message)){ localStorage.removeItem("picshare_atok"); AdminState.token=null; renderAdminLogin("Bitte erneut anmelden."); }
+    else app.innerHTML=adminTopbar()+`<div class='wrap'><div class='empty'>Fehler: ${esc(e.message)}</div></div>`, wireTopbar();
+  }
+}
+
+function renderAdminList(){
+  const gs=AdminState.galleries;
+  app.innerHTML=adminTopbar(`<button class="btn sm primary" id="newGalleryBtn">+ Neue Galerie</button>`)+`
+  <div class="wrap" style="padding:22px 16px 60px">
+    <h2 style="margin:0 0 18px; font-size:22px">Galerien</h2>
+    ${gs.length?`<div class="grid-cards">`+gs.map(g=>`
+      <div class="card" data-gid="${g.id}" style="cursor:pointer; transition:.15s">
+        <div style="display:flex; align-items:start; gap:10px">
+          <div style="flex:1">
+            <div style="font-size:17px; font-weight:600">${esc(g.title)}</div>
+            ${g.client_name?`<div class="muted" style="font-size:13px">${esc(g.client_name)}</div>`:""}
+          </div>
+          ${g.confirmed?'<span class="tag" style="border-color:#2a4a2a; color:var(--ok)">✓ bestätigt</span>':'<span class="tag">offen</span>'}
+        </div>
+        <div class="hr"></div>
+        <div style="display:flex; gap:16px; font-size:13px" class="muted">
+          <span>${g.image_count} Fotos</span>
+          <span>★ ${g.favorite_count} Favoriten</span>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:8px">
+          <button class="btn sm" data-open="${g.id}">Öffnen</button>
+          <button class="btn sm ghost" data-link="${g.id}">Link</button>
+          <button class="btn sm danger" data-del="${g.id}">Löschen</button>
+        </div>
+      </div>`).join("")+`</div>`
+    :`<div class="empty">Noch keine Galerien.<br><br><button class="btn primary" id="emptyNew">+ Erste Galerie anlegen</button></div>`}
+  </div>`;
+  wireTopbar();
+  const nb=$("#newGalleryBtn"); if(nb) nb.onclick=newGalleryModal;
+  const en=$("#emptyNew"); if(en) en.onclick=newGalleryModal;
+  app.querySelectorAll("[data-open]").forEach(b=>b.onclick=e=>{e.stopPropagation(); openAdminGallery(b.dataset.open);});
+  app.querySelectorAll(".card[data-gid]").forEach(c=>c.onclick=()=>openAdminGallery(c.dataset.gid));
+  app.querySelectorAll("[data-link]").forEach(b=>b.onclick=e=>{e.stopPropagation(); copyClientLink(b.dataset.link);});
+  app.querySelectorAll("[data-del]").forEach(b=>b.onclick=e=>{e.stopPropagation(); delGallery(b.dataset.del);});
+}
+
+function clientLink(gid){ return location.origin+location.pathname+"?g="+gid; }
+function copyClientLink(gid){
+  const url=clientLink(gid);
+  navigator.clipboard.writeText(url).then(()=>toast("Kunden-Link kopiert")).catch(()=>showModal(`<h3>Kunden-Link</h3><input class="inp" value="${esc(url)}" onclick="this.select()"><div style="margin-top:14px"><button class="btn primary" style="width:100%" onclick="this.closest('.modal-bg').remove()">OK</button></div>`));
+}
+
+function delGallery(gid){
+  const g=AdminState.galleries.find(x=>x.id===gid);
+  showModal(`<h3>Galerie löschen?</h3><p class="muted" style="margin-top:0">„${esc(g.title)}" und alle Favoriten/Kommentare werden gelöscht. Die Originale auf HiDrive bleiben erhalten.</p>
+    <div style="display:flex; gap:10px; margin-top:18px"><button class="btn ghost" style="flex:1" id="mC">Abbrechen</button><button class="btn danger" style="flex:1" id="mD">Löschen</button></div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mD").onclick=async()=>{ try{ await api("admin_delete_gallery",{gallery_id:gid},AdminState.token); toast("Gelöscht"); close(); loadAdminGalleries(); }catch(e){ toast(e.message,true); } };
+  });
+}
+
+function newGalleryModal(){
+  showModal(`<h3>Neue Galerie</h3>
+    <label class="fld"><span>Titel *</span><input class="inp" id="gTitle" placeholder="z.B. Hochzeit Müller"></label>
+    <label class="fld"><span>Kundenname</span><input class="inp" id="gClient" placeholder="optional"></label>
+    <label class="fld"><span>PIN für Kunden *</span><input class="inp" id="gPin" inputmode="numeric" placeholder="z.B. 4827"></label>
+    <label class="fld"><span>HiDrive-Ordner *</span><input class="inp" id="gPath" placeholder="/users/alexanderglauche080388/Schule/Galerie1"></label>
+    <div style="display:flex; gap:12px">
+      <label class="fld" style="flex:1"><span>Auswahl-Limit</span><input class="inp" id="gLimit" type="number" min="1" placeholder="leer = ∞"></label>
+    </div>
+    <div style="display:flex; gap:18px; margin:4px 0 8px">
+      <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="gWm" checked> Wasserzeichen</label>
+      <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="gDl" checked> Download erlauben</label>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:16px"><button class="btn ghost" style="flex:1" id="mC">Abbrechen</button><button class="btn primary" style="flex:1" id="mS">Anlegen</button></div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mS").onclick=async()=>{
+      const title=$("#gTitle").value.trim(), pin=$("#gPin").value.trim(), hidrive_path=$("#gPath").value.trim();
+      if(!title||!pin||!hidrive_path){ toast("Titel, PIN und HiDrive-Ordner sind Pflicht.", true); return; }
+      const limit=$("#gLimit").value? parseInt($("#gLimit").value):null;
+      $("#mS").disabled=true; $("#mS").textContent="…";
+      try{
+        await api("admin_create_gallery",{title, client_name:$("#gClient").value.trim()||null, pin, hidrive_path, selection_limit:limit, watermark_enabled:$("#gWm").checked, download_enabled:$("#gDl").checked}, AdminState.token);
+        toast("Galerie angelegt"); close(); loadAdminGalleries();
+      }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Anlegen"; }
+    };
+  });
+}
+
+// ---------- Admin: Galerie-Detail ----------
+async function openAdminGallery(gid){
+  app.innerHTML=adminTopbar()+"<div class='wrap'><div class='empty'>Lädt…</div></div>"; wireTopbar();
+  try{
+    const r=await api("admin_gallery_detail",{gallery_id:gid},AdminState.token);
+    AdminState.current=r;
+    renderAdminGallery();
+  }catch(e){ toast(e.message,true); loadAdminGalleries(); }
+}
+
+function renderAdminGallery(){
+  const {gallery,images,comments}=AdminState.current;
+  const favs=images.filter(i=>i.favorited);
+  app.innerHTML=adminTopbar(`<button class="btn sm ghost" id="backBtn">← Galerien</button>`)+`
+  <div class="wrap" style="padding:22px 16px 60px">
+    <div style="display:flex; align-items:start; gap:14px; flex-wrap:wrap">
+      <div style="flex:1; min-width:200px">
+        <h2 style="margin:0; font-size:22px">${esc(gallery.title)}</h2>
+        <p class="muted" style="margin:4px 0 0; font-size:13px">${gallery.client_name?esc(gallery.client_name)+" · ":""}${images.length} Fotos · ★ ${favs.length} Favoriten${gallery.selection_limit?" / "+gallery.selection_limit:""}${gallery.confirmed?' · <span style="color:var(--ok)">✓ bestätigt</span>':''}</p>
+        <p class="muted2" style="margin:4px 0 0; font-size:12px">HiDrive: ${esc(gallery.hidrive_path)}</p>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn sm ghost" id="copyLinkBtn">Kunden-Link</button>
+        <button class="btn sm ghost" id="importBtn">HiDrive einlesen</button>
+        <button class="btn sm primary" id="uploadBtn">+ Hochladen</button>
+      </div>
+    </div>
+    ${comments.length?`<div class="card" style="margin-top:18px; padding:14px 18px"><b style="font-size:14px">Kundenkommentare (${comments.length})</b><div style="margin-top:10px; max-height:160px; overflow:auto">${comments.map(c=>{const im=images.find(i=>i.id===c.image_id); return `<div style="font-size:13px; margin-bottom:8px"><span class="muted2">${im?esc(im.filename):'?'} · ${new Date(c.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><br>${esc(c.body)}</div>`;}).join("")}</div></div>`:""}
+    <div class="pill-row" style="margin-top:18px">
+      <button class="btn sm ghost" id="aFltAll">Alle (${images.length})</button>
+      <button class="btn sm ghost" id="aFltFav">★ Auswahl (${favs.length})</button>
+      <button class="btn sm ghost" id="exportFav">Auswahl exportieren</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+    <div class="photo-grid" id="aGrid"></div>
+  </div>`;
+  wireTopbar();
+  $("#backBtn").onclick=loadAdminGalleries;
+  $("#copyLinkBtn").onclick=()=>copyClientLink(gallery.id);
+  $("#importBtn").onclick=importHidrive;
+  $("#uploadBtn").onclick=()=>$("#fileInput").click();
+  $("#fileInput").onchange=handleUpload;
+  $("#aFltAll").onclick=()=>drawAdminGrid("all");
+  $("#aFltFav").onclick=()=>drawAdminGrid("fav");
+  $("#exportFav").onclick=exportFavorites;
+  drawAdminGrid("all");
+}
+
+function drawAdminGrid(filter){
+  const {gallery,images}=AdminState.current;
+  let imgs=images;
+  if(filter==="fav") imgs=imgs.filter(i=>i.favorited);
+  const grid=$("#aGrid");
+  if(!imgs.length){ grid.innerHTML="<div class='empty' style='grid-column:1/-1'>Keine Fotos. Lade welche hoch oder lies den HiDrive-Ordner ein.</div>"; return; }
+  grid.innerHTML=imgs.map(img=>{
+    const cc=AdminState.current.comments.filter(c=>c.image_id===img.id).length;
+    return `<div class="tile ${img.favorited?'is-fav':''}">
+      <img loading="lazy" src="${thumbUrl(img)}" alt="">
+      <div class="favbadge"><svg viewBox="0 0 24 24" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg></div>
+      ${cc?`<div class="cmtbadge">💬 ${cc}</div>`:""}
+      ${!img.thumb_path?`<div class="cmtbadge" style="left:auto; right:8px; bottom:8px; background:rgba(120,80,0,.7)">kein Thumb</div>`:""}
+    </div>`;
+  }).join("");
+}
+
+function exportFavorites(){
+  const favs=AdminState.current.images.filter(i=>i.favorited);
+  if(!favs.length){ toast("Keine Favoriten.", true); return; }
+  const list=favs.map(i=>i.filename).join("\n");
+  showModal(`<h3>Ausgewählte Fotos (${favs.length})</h3>
+    <textarea class="inp" style="min-height:200px; font-family:monospace; font-size:13px" onclick="this.select()">${esc(list)}</textarea>
+    <div style="display:flex; gap:10px; margin-top:14px">
+      <button class="btn ghost" style="flex:1" id="mCopy">Kopieren</button>
+      <button class="btn primary" style="flex:1" id="mDl">Als .txt</button>
+    </div>`,(close)=>{
+    $("#mCopy").onclick=()=>{ navigator.clipboard.writeText(list); toast("Kopiert"); };
+    $("#mDl").onclick=()=>{ const b=new Blob([list],{type:"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=AdminState.current.gallery.title.replace(/\s+/g,"_")+"_auswahl.txt"; a.click(); };
+  });
+}
+
+// ---------- Thumbnail-Generierung (Client) ----------
+function makeThumb(file, maxW=1000, quality=0.82){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      let {width:w,height:h}=img;
+      if(w>maxW){ h=Math.round(h*maxW/w); w=maxW; }
+      const c=document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      const dataUrl=c.toDataURL("image/webp",quality);
+      resolve({dataUrl, width:img.naturalWidth, height:img.naturalHeight});
+    };
+    img.onerror=reject;
+    img.src=URL.createObjectURL(file);
+  });
+}
+function fileToB64(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file); }); }
+
+async function handleUpload(e){
+  const files=[...e.target.files]; if(!files.length) return;
+  e.target.value="";
+  const gid=AdminState.current.gallery.id;
+  let done=0;
+  const prog=showModal(`<h3>Upload läuft…</h3><div class="progress" style="margin:10px 0"><div id="upBar" style="width:0%"></div></div><p class="muted" id="upTxt" style="font-size:13px">0 / ${files.length}</p>`);
+  for(const f of files){
+    try{
+      const thumb=await makeThumb(f);
+      const orig_b64=await fileToB64(f);
+      const thumb_b64=thumb.dataUrl.split(",")[1];
+      await api("admin_upload_image",{gallery_id:gid, filename:f.name, original_b64:orig_b64, thumb_b64, width:thumb.width, height:thumb.height}, AdminState.token);
+    }catch(err){ console.error(err); toast("Fehler bei "+f.name, true); }
+    done++;
+    const bar=$("#upBar"), txt=$("#upTxt"); if(bar) bar.style.width=(done/files.length*100)+"%"; if(txt) txt.textContent=`${done} / ${files.length}`;
+  }
+  prog(); toast(`${done} Foto(s) hochgeladen`);
+  openAdminGallery(gid);
+}
+
+// ---------- HiDrive-Import + Thumbnails nachgenerieren ----------
+async function importHidrive(){
+  const gid=AdminState.current.gallery.id;
+  toast("Lese HiDrive-Ordner…");
+  try{
+    const r=await api("admin_import_hidrive",{gallery_id:gid}, AdminState.token);
+    toast(`${r.added} neue Bilder importiert (${r.total} im Ordner)`);
+    // Galerie neu laden -> dann fehlende Thumbnails generieren
+    const det=await api("admin_gallery_detail",{gallery_id:gid},AdminState.token);
+    AdminState.current=det;
+    const missing=det.images.filter(i=>!i.thumb_path);
+    if(missing.length){
+      genThumbsForImported(missing, gid);
+    } else {
+      renderAdminGallery();
+    }
+  }catch(e){ toast(e.message,true); }
+}
+
+async function genThumbsForImported(missing, gid){
+  const prog=showModal(`<h3>Thumbnails werden erstellt…</h3><p class="muted" style="font-size:13px">Originale werden von HiDrive geladen und verkleinert.</p><div class="progress" style="margin:10px 0"><div id="tBar" style="width:0%"></div></div><p class="muted" id="tTxt" style="font-size:13px">0 / ${missing.length}</p>`);
+  let done=0;
+  for(const img of missing){
+    try{
+      const u=await api("admin_fetch_original_url",{image_id:img.id}, AdminState.token);
+      const blob=await (await fetch(u.url)).blob();
+      const file=new File([blob], img.filename, {type:blob.type});
+      const thumb=await makeThumb(file);
+      await api("admin_set_thumb",{image_id:img.id, thumb_b64:thumb.dataUrl.split(",")[1], width:thumb.width, height:thumb.height}, AdminState.token);
+    }catch(err){ console.error("thumb fail",img.filename,err); }
+    done++; const b=$("#tBar"),t=$("#tTxt"); if(b) b.style.width=(done/missing.length*100)+"%"; if(t) t.textContent=`${done} / ${missing.length}`;
+  }
+  prog(); toast("Thumbnails fertig");
+  openAdminGallery(gid);
+}
+
+// ============================================================
+// ===================  KUNDENBEREICH  ========================
+// ============================================================
+const ClientState = { gid:null, token:null, gallery:null, images:[], comments:[], lb:-1 };
+
+function thumbUrl(img){
+  if(img.thumb_path) return CONFIG.THUMB_BASE+img.thumb_path;
+  // Fallback-Platzhalter, falls noch kein Thumbnail generiert wurde
+  return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 200'><rect width='300' height='200' fill='%231c1c1c'/><text x='150' y='105' font-size='14' fill='%23666' text-anchor='middle' font-family='Arial'>"+esc(img.filename||'Bild')+"</text></svg>";
+}
+
+function renderClient(gid){
+  ClientState.gid = gid;
+  const saved = localStorage.getItem("picshare_gtok_"+gid);
+  if(saved){ ClientState.token = saved; loadGallery(); }
+  else renderPinGate();
+}
+
+function renderPinGate(msg){
+  app.innerHTML = `
+  <div class="gate">
+    <div class="card">
+      <div class="brand" style="justify-content:center; margin-bottom:6px"><span class="dot"></span> PicShare</div>
+      <p class="muted" style="margin:0 0 22px">Private Galerie · PIN erforderlich</p>
+      <label class="fld"><input class="inp" id="pinInput" type="password" inputmode="numeric"
+        placeholder="PIN eingeben" style="text-align:center; letter-spacing:4px; font-size:20px" autofocus></label>
+      ${msg?`<p style="color:var(--danger); font-size:13px; margin:-6px 0 14px">${esc(msg)}</p>`:""}
+      <button class="btn primary" id="pinBtn" style="width:100%; justify-content:center">Galerie öffnen</button>
+    </div>
+  </div>`;
+  const go=async()=>{
+    const pin=$("#pinInput").value.trim();
+    if(!pin) return;
+    $("#pinBtn").disabled=true; $("#pinBtn").textContent="Prüfe…";
+    try{
+      const r=await api("gallery_login",{gallery_id:ClientState.gid, pin});
+      ClientState.token=r.token; ClientState.gallery=r.gallery;
+      localStorage.setItem("picshare_gtok_"+ClientState.gid, r.token);
+      loadGallery();
+    }catch(e){ renderPinGate(e.message); }
+  };
+  $("#pinBtn").onclick=go;
+  $("#pinInput").onkeydown=e=>{ if(e.key==="Enter") go(); };
+}
+
+async function loadGallery(){
+  app.innerHTML="<div class='empty'>Galerie lädt…</div>";
+  try{
+    const r=await api("gallery_view",{gallery_id:ClientState.gid}, ClientState.token);
+    ClientState.gallery=r.gallery; ClientState.images=r.images||[]; ClientState.comments=r.comments||[];
+    renderGalleryView();
+  }catch(e){
+    if(/unauthorized|token/i.test(e.message)){ localStorage.removeItem("picshare_gtok_"+ClientState.gid); renderPinGate("Sitzung abgelaufen, bitte PIN erneut eingeben."); }
+    else app.innerHTML=`<div class='empty'>Fehler: ${esc(e.message)}</div>`;
+  }
+}
+
+function favCount(){ return ClientState.images.filter(i=>i.favorited).length; }
+function commentsFor(imgId){ return ClientState.comments.filter(c=>c.image_id===imgId); }
+
+function renderGalleryView(){
+  const g=ClientState.gallery, imgs=ClientState.images;
+  const limit=g.selection_limit;
+  const fc=favCount();
+  app.innerHTML = `
+  <header class="topbar"><div class="wrap"><div class="row">
+    <div class="brand"><span class="dot"></span> ${esc(g.title)}</div>
+    <div class="spacer"></div>
+    <span class="tag">${imgs.length} Fotos</span>
+    <span class="tag" id="favTag">★ ${fc}${limit?" / "+limit:""}</span>
+    ${g.confirmed?'<span class="tag" style="border-color:#2a4a2a; color:var(--ok)">✓ bestätigt</span>':''}
+  </div></div></header>
+  <div class="wrap" style="padding-top:18px; padding-bottom:90px">
+    ${g.client_name?`<p class="muted" style="margin:0 0 16px">Für ${esc(g.client_name)}</p>`:""}
+    ${limit?`<div class="card" style="padding:14px 18px; margin-bottom:18px">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
+        <span class="muted">Deine Auswahl</span><span class="mono"><b id="favNum">${fc}</b> von ${limit}</span>
+      </div>
+      <div class="progress"><div id="favBar" style="width:${Math.min(100,fc/limit*100)}%"></div></div>
+    </div>`:""}
+    <div class="pill-row">
+      <button class="btn sm ghost" id="fltAll">Alle</button>
+      <button class="btn sm ghost" id="fltFav">★ Favoriten</button>
+    </div>
+    <div class="photo-grid" id="grid"></div>
+  </div>
+  <div id="confirmBar"></div>`;
+  $("#fltAll").onclick=()=>drawGrid("all");
+  $("#fltFav").onclick=()=>drawGrid("fav");
+  drawGrid("all");
+  renderConfirmBar();
+}
+
+function drawGrid(filter){
+  const grid=$("#grid");
+  let imgs=ClientState.images;
+  if(filter==="fav") imgs=imgs.filter(i=>i.favorited);
+  if(!imgs.length){ grid.innerHTML="<div class='empty' style='grid-column:1/-1'>Keine Fotos.</div>"; return; }
+  const wm=ClientState.gallery.watermark_enabled;
+  grid.innerHTML=imgs.map(img=>{
+    const idx=ClientState.images.indexOf(img);
+    const cc=commentsFor(img.id).length;
+    return `<div class="tile ${img.favorited?'is-fav':''}" data-idx="${idx}">
+      <img loading="lazy" src="${thumbUrl(img)}" alt="">
+      ${wm?`<div class="wm"><img src="${CONFIG.WATERMARK}"></div>`:""}
+      <div class="favbadge" data-fav="${img.id}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg>
+      </div>
+      ${cc?`<div class="cmtbadge">💬 ${cc}</div>`:""}
+    </div>`;
+  }).join("");
+  grid.querySelectorAll(".tile").forEach(t=>{
+    t.querySelector("img").onclick=()=>openLightbox(+t.dataset.idx);
+    if(ClientState.gallery.watermark_enabled){ const w=t.querySelector(".wm"); if(w) w.onclick=()=>openLightbox(+t.dataset.idx); }
+    t.querySelector(".favbadge").onclick=e=>{ e.stopPropagation(); toggleFav(t.querySelector(".favbadge").dataset.fav); };
+  });
+}
+
+async function toggleFav(imageId){
+  try{
+    const r=await api("gallery_toggle_fav",{gallery_id:ClientState.gid, image_id:imageId}, ClientState.token);
+    const img=ClientState.images.find(i=>i.id===imageId); if(img) img.favorited=r.favorited;
+    syncFavUI();
+    // aktuellen Filter neu zeichnen
+    const favFilterActive=false; drawGrid("all");
+    if(ClientState.lb>=0) updateLightboxFav();
+  }catch(e){ toast(e.message, true); }
+}
+
+function syncFavUI(){
+  const fc=favCount(), limit=ClientState.gallery.selection_limit;
+  const ft=$("#favTag"); if(ft) ft.textContent=`★ ${fc}${limit?" / "+limit:""}`;
+  const fn=$("#favNum"); if(fn) fn.textContent=fc;
+  const fb=$("#favBar"); if(fb&&limit) fb.style.width=Math.min(100,fc/limit*100)+"%";
+}
+
+function renderConfirmBar(){
+  const bar=$("#confirmBar"); if(!bar) return;
+  const g=ClientState.gallery;
+  if(g.confirmed){ bar.innerHTML=""; return; }
+  bar.innerHTML=`<div style="position:fixed; bottom:0; left:0; right:0; background:rgba(10,10,10,.92); backdrop-filter:blur(10px); border-top:1px solid var(--line); padding:12px 16px; z-index:40">
+    <div class="wrap" style="display:flex; align-items:center; gap:12px">
+      <span class="muted" style="font-size:13px" id="cbInfo">${favCount()} Fotos ausgewählt</span>
+      <div class="spacer"></div>
+      <button class="btn primary" id="confirmBtn">Auswahl bestätigen</button>
+    </div></div>`;
+  $("#confirmBtn").onclick=confirmSelection;
+}
+
+function confirmSelection(){
+  const fc=favCount();
+  if(fc===0){ toast("Bitte wähle zuerst Fotos aus.", true); return; }
+  showModal(`
+    <h3>Auswahl bestätigen</h3>
+    <p class="muted" style="margin-top:0">Du bestätigst deine Auswahl von <b style="color:var(--txt)">${fc} Foto${fc===1?"":"s"}</b>. Der Fotograf wird informiert. Danach ist die Auswahl final.</p>
+    <div style="display:flex; gap:10px; margin-top:20px">
+      <button class="btn ghost" style="flex:1" id="mCancel">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mOk">Bestätigen</button>
+    </div>`,(close)=>{
+    $("#mCancel").onclick=close;
+    $("#mOk").onclick=async()=>{
+      try{ await api("gallery_confirm",{gallery_id:ClientState.gid}, ClientState.token);
+        ClientState.gallery.confirmed=true; close(); toast("Auswahl bestätigt ✓"); renderGalleryView();
+      }catch(e){ toast(e.message,true); }
+    };
+  });
+}
+
+// ---------- Lightbox ----------
+function openLightbox(idx){
+  ClientState.lb=idx;
+  const lb=document.createElement("div"); lb.className="lightbox"; lb.id="lightbox";
+  document.body.appendChild(lb);
+  drawLightbox();
+  document.addEventListener("keydown", lbKeys);
+}
+function closeLightbox(){
+  ClientState.lb=-1;
+  const lb=$("#lightbox"); if(lb) lb.remove();
+  document.removeEventListener("keydown", lbKeys);
+  drawGrid("all"); syncFavUI();
+}
+function lbKeys(e){
+  if(e.key==="Escape") closeLightbox();
+  if(e.key==="ArrowLeft") lbNav(-1);
+  if(e.key==="ArrowRight") lbNav(1);
+}
+function lbNav(d){
+  let n=ClientState.lb+d;
+  if(n<0) n=ClientState.images.length-1;
+  if(n>=ClientState.images.length) n=0;
+  ClientState.lb=n; drawLightbox();
+}
+function drawLightbox(){
+  const lb=$("#lightbox"); if(!lb) return;
+  const img=ClientState.images[ClientState.lb];
+  const g=ClientState.gallery;
+  const cmts=commentsFor(img.id);
+  lb.innerHTML=`
+    <div class="lb-stage">
+      <button class="lb-nav prev" id="lbPrev">‹</button>
+      <img src="${thumbUrl(img)}" alt="">
+      ${g.watermark_enabled?`<div class="lb-wm"><img src="${CONFIG.WATERMARK}"></div>`:""}
+      <button class="lb-nav next" id="lbNext">›</button>
+      <div class="lb-side" id="lbSide">
+        <div style="padding:16px; border-bottom:1px solid var(--line); display:flex; align-items:center">
+          <b>Kommentare</b><div class="spacer"></div>
+          <button class="btn sm ghost" id="lbSideClose">✕</button>
+        </div>
+        <div style="flex:1; overflow:auto; padding:14px" id="lbCmts"></div>
+        <div style="padding:14px; border-top:1px solid var(--line)">
+          <textarea class="inp" id="lbCmtInput" placeholder="Kommentar schreiben…" style="min-height:54px"></textarea>
+          <button class="btn primary sm" id="lbCmtSend" style="margin-top:8px; width:100%; justify-content:center">Senden</button>
+        </div>
+      </div>
+    </div>
+    <div class="lb-bar">
+      <span class="muted2 mono" style="font-size:13px">${ClientState.lb+1} / ${ClientState.images.length}</span>
+      <span class="muted" style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(img.filename)}</span>
+      <div class="spacer"></div>
+      <button class="btn sm ${img.favorited?'primary':''}" id="lbFav">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg>
+        ${img.favorited?'Favorit':'Favorisieren'}
+      </button>
+      <button class="btn sm ghost" id="lbCmtToggle">💬 ${cmts.length}</button>
+      ${g.download_enabled?`<button class="btn sm ghost" id="lbDl">⤓ Download</button>`:""}
+      <button class="btn sm ghost" id="lbClose">✕</button>
+    </div>`;
+  $("#lbPrev").onclick=()=>lbNav(-1);
+  $("#lbNext").onclick=()=>lbNav(1);
+  $("#lbClose").onclick=closeLightbox;
+  $("#lbFav").onclick=()=>toggleFav(img.id);
+  $("#lbCmtToggle").onclick=()=>$("#lbSide").classList.toggle("open");
+  $("#lbSideClose").onclick=()=>$("#lbSide").classList.remove("open");
+  $("#lbCmtSend").onclick=()=>sendComment(img.id);
+  const dl=$("#lbDl"); if(dl) dl.onclick=()=>downloadImage(img.id);
+  drawComments(img.id);
+}
+function updateLightboxFav(){ drawLightbox(); }
+function drawComments(imgId){
+  const box=$("#lbCmts"); if(!box) return;
+  const cmts=commentsFor(imgId);
+  box.innerHTML=cmts.length? cmts.map(c=>`<div style="margin-bottom:12px"><div style="font-size:11px; color:var(--muted2)">${esc(c.author||'Kunde')} · ${new Date(c.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div><div style="font-size:14px; margin-top:2px">${esc(c.body)}</div></div>`).join("")
+    : `<p class="muted2" style="font-size:13px">Noch keine Kommentare.</p>`;
+}
+async function sendComment(imgId){
+  const ta=$("#lbCmtInput"); const body=ta.value.trim();
+  if(!body) return;
+  try{
+    const r=await api("gallery_comment",{gallery_id:ClientState.gid, image_id:imgId, body}, ClientState.token);
+    ClientState.comments.push(r.comment); ta.value="";
+    drawComments(imgId);
+    const tg=$("#lbCmtToggle"); if(tg) tg.textContent="💬 "+commentsFor(imgId).length;
+  }catch(e){ toast(e.message,true); }
+}
+async function downloadImage(imgId){
+  try{
+    toast("Download wird vorbereitet…");
+    const r=await api("gallery_download",{gallery_id:ClientState.gid, image_id:imgId}, ClientState.token);
+    window.open(r.url,"_blank");
+  }catch(e){ toast(e.message,true); }
+}
+
+// ---------- generisches Modal ----------
+function showModal(html, setup){
+  const bg=document.createElement("div"); bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal">${html}</div>`;
+  document.body.appendChild(bg);
+  const close=()=>bg.remove();
+  bg.onclick=e=>{ if(e.target===bg) close(); };
+  if(setup) setup(close);
+  return close;
+}
+
+if(GALLERY_ID){ renderClient(GALLERY_ID); } else { renderAdmin(); }
+</script>
+</body>
+</html>
