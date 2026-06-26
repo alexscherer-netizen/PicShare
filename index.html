@@ -417,19 +417,23 @@ async function handleUpload(e){
   const files=[...e.target.files]; if(!files.length) return;
   e.target.value="";
   const gid=AdminState.current.gallery.id;
-  let done=0;
+  let done=0, okCount=0, failCount=0;
+  const MAX_ORIG=18*1024*1024; // 18 MB Original-Limit (Edge-Function-Payload)
   const prog=showModal(`<h3>Upload läuft…</h3><div class="progress" style="margin:10px 0"><div id="upBar" style="width:0%"></div></div><p class="muted" id="upTxt" style="font-size:13px">0 / ${files.length}</p>`);
   for(const f of files){
     try{
+      if(f.size>MAX_ORIG){ throw new Error(`zu groß (${(f.size/1024/1024).toFixed(1)} MB, max 18 MB)`); }
       const thumb=await makeThumb(f);
       const orig_b64=await fileToB64(f);
       const thumb_b64=thumb.dataUrl.split(",")[1];
       await api("admin_upload_image",{gallery_id:gid, filename:f.name, original_b64:orig_b64, thumb_b64, width:thumb.width, height:thumb.height}, AdminState.token);
-    }catch(err){ console.error(err); toast("Fehler bei "+f.name, true); }
+      okCount++;
+    }catch(err){ console.error("Upload",f.name,err); failCount++; toast(f.name+": "+err.message, true); }
     done++;
     const bar=$("#upBar"), txt=$("#upTxt"); if(bar) bar.style.width=(done/files.length*100)+"%"; if(txt) txt.textContent=`${done} / ${files.length}`;
   }
-  prog(); toast(`${done} Foto(s) hochgeladen`);
+  prog();
+  toast(failCount? `${okCount} ok, ${failCount} fehlgeschlagen` : `${okCount} Foto(s) hochgeladen`, failCount>0);
   openAdminGallery(gid);
 }
 
