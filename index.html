@@ -361,8 +361,10 @@ function newGalleryModal(){
     <label class="fld"><span>PIN für Kunden *</span><input class="inp" id="gPin" inputmode="numeric" placeholder="z.B. 4827"></label>
     <label class="fld"><span>HiDrive-Ordner *</span><input class="inp" id="gPath" placeholder="/users/alexanderglauche080388/Schule/Galerie1"></label>
     <div style="display:flex; gap:12px">
-      <label class="fld" style="flex:1"><span>Auswahl-Limit</span><input class="inp" id="gLimit" type="number" min="1" placeholder="leer = ∞"></label>
+      <label class="fld" style="flex:1"><span>Inklusive Fotos (Limit)</span><input class="inp" id="gLimit" type="number" min="1" placeholder="z.B. 3"></label>
+      <label class="fld" style="flex:1"><span>Preis je Extra-Foto (€)</span><input class="inp" id="gExtra" type="number" min="0" step="0.01" placeholder="z.B. 15"></label>
     </div>
+    <p class="muted2" style="font-size:12px; margin:-6px 0 12px">Sind beide gesetzt, darf der Kunde über das Limit hinaus wählen – jedes weitere Foto kostet den Aufpreis. Ohne Preis ist das Limit hart.</p>
     <div style="display:flex; gap:18px; margin:4px 0 8px">
       <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="gWm" checked> Wasserzeichen</label>
       <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="gDl" checked> Download erlauben</label>
@@ -374,9 +376,10 @@ function newGalleryModal(){
       const title=$("#gTitle").value.trim(), pin=$("#gPin").value.trim(), hidrive_path=$("#gPath").value.trim();
       if(!title||!pin||!hidrive_path){ toast("Titel, PIN und HiDrive-Ordner sind Pflicht.", true); return; }
       const limit=$("#gLimit").value? parseInt($("#gLimit").value):null;
+      const extra=$("#gExtra").value!==""? parseFloat($("#gExtra").value):null;
       $("#mS").disabled=true; $("#mS").textContent="…";
       try{
-        await api("admin_create_gallery",{title, client_name:$("#gClient").value.trim()||null, pin, hidrive_path, selection_limit:limit, watermark_enabled:$("#gWm").checked, download_enabled:$("#gDl").checked, welcome_text:$("#gWelcome").value.trim()||null}, AdminState.token);
+        await api("admin_create_gallery",{title, client_name:$("#gClient").value.trim()||null, pin, hidrive_path, selection_limit:limit, extra_price:extra, watermark_enabled:$("#gWm").checked, download_enabled:$("#gDl").checked, welcome_text:$("#gWelcome").value.trim()||null}, AdminState.token);
         toast("Galerie angelegt"); close(); loadAdminGalleries();
       }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Anlegen"; }
     };
@@ -397,21 +400,33 @@ function renderAdminGallery(){
   const {gallery,images,comments}=AdminState.current;
   const favs=images.filter(i=>i.favorited);
   const sels=images.filter(i=>i.selected);
+  const limit=gallery.selection_limit||0;
+  const price=(gallery.extra_price!=null)?Number(gallery.extra_price):0;
+  const extra=(limit>0 && sels.length>limit)?(sels.length-limit):0;
+  const extraSum=extra*price;
+  const fmtEur=(n)=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n);
   app.innerHTML=adminTopbar(`<button class="btn sm ghost" id="backBtn">← Galerien</button>`)+`
   <div class="wrap" style="padding:22px 16px 60px">
     <div style="display:flex; align-items:start; gap:14px; flex-wrap:wrap">
       <div style="flex:1; min-width:200px">
         <h2 style="margin:0; font-size:22px">${esc(gallery.title)}</h2>
-        <p class="muted" style="margin:4px 0 0; font-size:13px">${gallery.client_name?esc(gallery.client_name)+" · ":""}${images.length} Fotos · ＋ ${sels.length} Auswahl${gallery.selection_limit?" / "+gallery.selection_limit:""} · ❤ ${favs.length} Fav${gallery.confirmed?' · <span style="color:var(--ok)">✓ bestätigt</span>':''}</p>
-        <p class="muted2" style="margin:4px 0 0; font-size:12px">HiDrive: ${esc(gallery.hidrive_path)}</p>
+        <p class="muted" style="margin:4px 0 0; font-size:13px">${gallery.client_name?esc(gallery.client_name)+" · ":""}${images.length} Fotos · ＋ ${sels.length} Auswahl${limit?" / "+limit:""} · ❤ ${favs.length} Fav${gallery.confirmed?' · <span style="color:var(--ok)">✓ bestätigt</span>':''}</p>
+        <p class="muted2" style="margin:4px 0 0; font-size:12px">HiDrive: ${esc(gallery.hidrive_path)}${(limit&&price)?` · ${limit} inkl., je extra ${fmtEur(price)}`:""}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn sm ghost" id="copyLinkBtn">Kunden-Link</button>
+        <button class="btn sm ghost" id="pricingBtn">Preise & Limit</button>
         <button class="btn sm ghost" id="welcomeBtn">Willkommen</button>
         <button class="btn sm ghost" id="importBtn">HiDrive einlesen</button>
         <button class="btn sm primary" id="uploadBtn">+ Hochladen</button>
       </div>
     </div>
+    ${extra>0?`<div class="card" style="margin-top:18px; padding:14px 18px; border-color:#3a3a1a">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px">
+        <span><b>${extra}</b> Extra-Foto${extra===1?"":"s"} über dem Limit <span class="muted">(${limit} inkl., je ${fmtEur(price)})</span></span>
+        <b style="font-size:16px">Aufpreis ${fmtEur(extraSum)}</b>
+      </div>
+    </div>`:""}
     ${comments.length?`<div class="card" style="margin-top:18px; padding:14px 18px"><b style="font-size:14px">Kundenkommentare (${comments.length})</b><div style="margin-top:10px; max-height:160px; overflow:auto">${comments.map(c=>{const im=images.find(i=>i.id===c.image_id); return `<div style="font-size:13px; margin-bottom:8px"><span class="muted2">${im?esc(im.filename):'?'} · ${new Date(c.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><br>${esc(c.body)}</div>`;}).join("")}</div></div>`:""}
     <div class="pill-row" style="margin-top:18px">
       <button class="btn sm ghost" id="aFltAll">Alle (${images.length})</button>
@@ -426,6 +441,7 @@ function renderAdminGallery(){
   wireTopbar();
   $("#backBtn").onclick=loadAdminGalleries;
   $("#copyLinkBtn").onclick=()=>copyClientLink(gallery.id);
+  $("#pricingBtn").onclick=()=>editPricing(gallery);
   $("#welcomeBtn").onclick=()=>editGalleryWelcome(gallery);
   $("#importBtn").onclick=importHidrive;
   $("#uploadBtn").onclick=()=>$("#fileInput").click();
@@ -456,6 +472,35 @@ function editGalleryWelcome(gallery){
         gallery.welcome_text=txt||null;
         if(AdminState.current && AdminState.current.gallery) AdminState.current.gallery.welcome_text=txt||null;
         toast("Willkommenstext gespeichert"); close();
+      }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Speichern"; }
+    };
+  });
+}
+
+function editPricing(gallery){
+  const lim=gallery.selection_limit??"";
+  const pr=(gallery.extra_price!=null)?gallery.extra_price:"";
+  showModal(`<h3>Preise & Limit – ${esc(gallery.title)}</h3>
+    <p class="muted" style="margin-top:0; font-size:13px">Das Limit ist die im Paket enthaltene Foto-Anzahl. Mit gesetztem Extra-Preis darf der Kunde mehr wählen; jedes weitere Foto kostet Aufpreis.</p>
+    <div style="display:flex; gap:12px">
+      <label class="fld" style="flex:1"><span>Inklusive Fotos (Limit)</span><input class="inp" id="epLimit" type="number" min="1" value="${lim}" placeholder="z.B. 3"></label>
+      <label class="fld" style="flex:1"><span>Preis je Extra-Foto (€)</span><input class="inp" id="epExtra" type="number" min="0" step="0.01" value="${pr}" placeholder="z.B. 15"></label>
+    </div>
+    <p class="muted2" style="font-size:12px; margin:-4px 0 0">Limit leer = unbegrenzt. Preis leer = hartes Limit (keine Extra-Fotos).</p>
+    <div style="display:flex; gap:10px; margin-top:16px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mS">Speichern</button>
+    </div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mS").onclick=async()=>{
+      const limit=$("#epLimit").value!==""? parseInt($("#epLimit").value):null;
+      const extra=$("#epExtra").value!==""? parseFloat($("#epExtra").value):null;
+      $("#mS").disabled=true; $("#mS").textContent="…";
+      try{
+        await api("admin_update_gallery",{gallery_id:gallery.id, selection_limit:limit, extra_price:extra}, AdminState.token);
+        gallery.selection_limit=limit; gallery.extra_price=extra;
+        if(AdminState.current&&AdminState.current.gallery){ AdminState.current.gallery.selection_limit=limit; AdminState.current.gallery.extra_price=extra; }
+        toast("Preise gespeichert"); close(); renderAdminGallery();
       }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Speichern"; }
     };
   });
@@ -653,6 +698,64 @@ function selOrder(imgId){ // 1-basierte Position in der Auswahl
   const sel=ClientState.images.filter(i=>i.selected);
   return sel.findIndex(i=>i.id===imgId)+1;
 }
+function eur(n){ return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n); }
+// Liefert Infos zu Inklusiv-/Extra-Bildern und Aufpreis
+function extraInfo(){
+  const g=ClientState.gallery;
+  const limit=g.selection_limit||0;
+  const price=(g.extra_price!=null)?Number(g.extra_price):0;
+  const sc=selCount();
+  const hasExtraPricing = limit>0 && price>0;
+  const extra = (limit>0 && sc>limit) ? (sc-limit) : 0;
+  return { limit, price, sc, hasExtraPricing, extra, sum: extra*price };
+}
+
+// Auswahl-/Preis-Karte (offen + bestätigt, mit Extra-Bild-Aufpreis)
+function selectionCard(){
+  const g=ClientState.gallery;
+  const confirmed=g.confirmed;
+  const { limit, price, sc, hasExtraPricing, extra, sum } = extraInfo();
+  if(!limit){
+    // kein Limit -> nur einfache Anzeige
+    return confirmed
+      ? `<div class="card" style="padding:14px 18px; margin-bottom:18px; border-color:#2a4a2a"><div style="display:flex; align-items:center; gap:10px"><span style="font-size:20px">✓</span><div><b style="color:var(--ok)">Auswahl bestätigt</b><div class="muted" style="font-size:13px">${sc} Foto${sc===1?"":"s"} ausgewählt. Du kannst deine Auswahl jederzeit ändern und erneut bestätigen.</div></div></div></div>`
+      : "";
+  }
+  const within = Math.min(sc, limit);
+  const barIncl = Math.min(100, within/limit*100);
+  const head = confirmed
+    ? `<div style="display:flex; align-items:center; gap:10px; margin-bottom:12px"><span style="font-size:20px">✓</span><div><b style="color:var(--ok)">Auswahl bestätigt</b><div class="muted" style="font-size:13px">Du kannst deine Auswahl jederzeit ändern und erneut bestätigen.</div></div></div>`
+    : "";
+  return `<div class="card" style="padding:16px 18px; margin-bottom:18px${confirmed?'; border-color:#2a4a2a':''}">
+    ${head}
+    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
+      <span class="muted">Im Paket enthalten</span>
+      <span class="mono"><b id="selNum">${sc}</b> von ${limit}</span>
+    </div>
+    <div class="progress" style="margin-bottom:${(hasExtraPricing&&extra>0)?'14px':'0'}">
+      <div id="selBar" style="width:${barIncl}%"></div>
+    </div>
+    ${hasExtraPricing ? (
+      extra>0
+      ? `<div style="background:var(--panel2); border:1px solid var(--line2); border-radius:6px; padding:12px 14px">
+           <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px">
+             <span><b>${extra}</b> Extra-Foto${extra===1?"":"s"} <span class="muted">× ${eur(price)}</span></span>
+             <b style="font-size:16px">${eur(sum)}</b>
+           </div>
+           <div class="muted2" style="font-size:12px; margin-top:6px">${limit} Foto${limit===1?"":"s"} sind im Paket enthalten. Jedes weitere Foto kostet ${eur(price)} Aufpreis.</div>
+         </div>`
+      : `<div class="muted2" style="font-size:12px">${limit} Foto${limit===1?"":"s"} im Paket enthalten. Jedes weitere kostet ${eur(price)} Aufpreis.</div>`
+    ) : (
+      sc>limit
+      ? `<div class="muted2" style="font-size:12px; color:var(--danger)">Du hast mehr als ${limit} Foto${limit===1?"":"s"} gewählt.</div>`
+      : ""
+    )}
+  </div>`;
+}
+
+function refreshSelCard(){
+  const el=$("#selCard"); if(el) el.innerHTML=selectionCard();
+}
 
 function renderGalleryView(){
   const g=ClientState.gallery, imgs=ClientState.images;
@@ -670,18 +773,7 @@ function renderGalleryView(){
   </div></div></header>
   <div class="wrap" style="padding-top:18px; padding-bottom:90px">
     ${g.client_name?`<p class="muted" style="margin:0 0 16px">Für ${esc(g.client_name)}</p>`:""}
-    ${confirmed?`<div class="card" style="padding:14px 18px; margin-bottom:18px; border-color:#2a4a2a">
-      <div style="display:flex; align-items:center; gap:10px">
-        <span style="font-size:20px">✓</span>
-        <div><b style="color:var(--ok)">Auswahl bestätigt</b><div class="muted" style="font-size:13px">${sc} Foto${sc===1?"":"s"} ausgewählt. Du kannst deine Auswahl weiterhin ändern – bestätige danach einfach erneut.</div></div>
-      </div>
-      ${limit?`<div style="margin-top:12px"><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px"><span class="muted">Auswahl</span><span class="mono"><b id="selNum">${sc}</b> von ${limit}</span></div><div class="progress"><div id="selBar" style="width:${Math.min(100,sc/limit*100)}%"></div></div></div>`:""}
-    </div>`:(limit?`<div class="card" style="padding:14px 18px; margin-bottom:18px">
-      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
-        <span class="muted">Deine Auswahl (＋)</span><span class="mono"><b id="selNum">${sc}</b> von ${limit}</span>
-      </div>
-      <div class="progress"><div id="selBar" style="width:${Math.min(100,sc/limit*100)}%"></div></div>
-    </div>`:"")}
+    <div id="selCard">${selectionCard()}</div>
     <div class="pill-row">
       <button class="btn sm ghost" id="fltAll">Alle</button>
       <button class="btn sm ghost" id="fltSel">＋ Auswahl</button>
@@ -772,6 +864,7 @@ async function toggleSelect(imageId){
     const r=await api("gallery_toggle_select",{gallery_id:ClientState.gid, image_id:imageId}, ClientState.token);
     const img=ClientState.images.find(i=>i.id===imageId); if(img) img.selected=r.selected;
     syncCounts();
+    refreshSelCard();
     drawGrid("all");
     renderConfirmBar();
     if(ClientState.lb>=0) drawLightbox();
@@ -783,7 +876,7 @@ function syncCounts(){
   const st=$("#selTag"); if(st) st.textContent=`＋ ${sc}${limit?" / "+limit:""}`;
   const ft=$("#favTag"); if(ft) ft.textContent=`❤ ${fc}`;
   const sn=$("#selNum"); if(sn) sn.textContent=sc;
-  const sb=$("#selBar"); if(sb&&limit) sb.style.width=Math.min(100,sc/limit*100)+"%";
+  const sb=$("#selBar"); if(sb&&limit) sb.style.width=Math.min(100,Math.min(sc,limit)/limit*100)+"%";
 }
 
 async function downloadZip(which){
@@ -799,9 +892,11 @@ function renderConfirmBar(){
   const g=ClientState.gallery;
   const sc=selCount();
   const confirmed=g.confirmed;
+  const { hasExtraPricing, extra, sum } = extraInfo();
+  const extraLabel = (hasExtraPricing && extra>0) ? ` · <span style="color:var(--txt)">+${eur(sum)} Aufpreis</span>` : "";
   bar.innerHTML=`<div style="position:fixed; bottom:0; left:0; right:0; background:rgba(10,10,10,.92); backdrop-filter:blur(10px); border-top:1px solid var(--line); padding:12px 16px; z-index:40">
     <div class="wrap" style="display:flex; align-items:center; gap:12px">
-      <span class="muted" style="font-size:13px" id="cbInfo">${sc} Foto${sc===1?"":"s"} in der Auswahl (＋)${confirmed?' · <span style="color:var(--ok)">bestätigt</span>':''}</span>
+      <span class="muted" style="font-size:13px" id="cbInfo">${sc} Foto${sc===1?"":"s"} (＋)${extraLabel}${confirmed?' · <span style="color:var(--ok)">bestätigt</span>':''}</span>
       <div class="spacer"></div>
       <button class="btn primary" id="confirmBtn"${sc===0?" disabled":""}>${confirmed?'Erneut bestätigen':'Auswahl bestätigen'}</button>
     </div></div>`;
@@ -811,10 +906,22 @@ function renderConfirmBar(){
 function confirmSelection(){
   const sc=selCount();
   if(sc===0){ toast("Bitte triff zuerst eine Auswahl mit ＋.", true); return; }
+  const { limit, price, hasExtraPricing, extra, sum } = extraInfo();
+  const priceBlock = (hasExtraPricing && extra>0)
+    ? `<div style="background:var(--panel2); border:1px solid var(--line2); border-radius:6px; padding:12px 14px; margin:14px 0; font-size:14px">
+         <div style="display:flex; justify-content:space-between"><span>Im Paket enthalten</span><span class="mono">${Math.min(sc,limit)} Foto${Math.min(sc,limit)===1?"":"s"}</span></div>
+         <div style="display:flex; justify-content:space-between; margin-top:4px"><span>Extra-Fotos</span><span class="mono">${extra} × ${eur(price)}</span></div>
+         <div class="hr" style="margin:8px 0"></div>
+         <div style="display:flex; justify-content:space-between; font-weight:700"><span>Aufpreis</span><span>${eur(sum)}</span></div>
+       </div>`
+    : "";
   showModal(`
     <h3>Auswahl bestätigen</h3>
-    <p class="muted" style="margin-top:0">Du bestätigst deine Auswahl von <b style="color:var(--txt)">${sc} Foto${sc===1?"":"s"}</b>. Der Fotograf wird informiert. Danach lässt sich die Auswahl nicht mehr ändern.</p>
-    <div style="display:flex; gap:10px; margin-top:20px">
+    <p class="muted" style="margin-top:0">Du bestätigst deine Auswahl von <b style="color:var(--txt)">${sc} Foto${sc===1?"":"s"}</b>. Der Fotograf wird informiert.</p>
+    ${priceBlock}
+    ${(hasExtraPricing&&extra>0)?`<p class="muted2" style="font-size:12px; margin:0 0 4px">Der Aufpreis wird separat mit dem Fotografen abgerechnet.</p>`:""}
+    <p class="muted2" style="font-size:12px; margin:6px 0 0">Du kannst deine Auswahl auch nach dem Bestätigen noch ändern.</p>
+    <div style="display:flex; gap:10px; margin-top:18px">
       <button class="btn ghost" style="flex:1" id="mCancel">Abbrechen</button>
       <button class="btn primary" style="flex:1" id="mOk">Bestätigen</button>
     </div>`,(close)=>{
