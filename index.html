@@ -177,7 +177,7 @@ const GALLERY_ID = params.get("g");
 // ============================================================
 // ====================  ADMIN-BEREICH  =======================
 // ============================================================
-const AdminState = { token:localStorage.getItem("picshare_atok")||null, galleries:[], current:null };
+const AdminState = { token:localStorage.getItem("picshare_atok")||null, galleries:[], current:null, manageMode:false };
 
 function renderAdmin(){
   if(!AdminState.token){ renderAdminLogin(); return; }
@@ -461,6 +461,7 @@ function newGalleryModal(){
 
 // ---------- Admin: Galerie-Detail ----------
 async function openAdminGallery(gid){
+  AdminState.manageMode=false;
   app.innerHTML=adminTopbar()+"<div class='wrap'><div class='empty'>Lädt…</div></div>"; wireTopbar();
   try{
     const r=await api("admin_gallery_detail",{gallery_id:gid},AdminState.token);
@@ -493,6 +494,7 @@ function renderAdminGallery(){
         <p class="muted2" style="margin:4px 0 0; font-size:12px">HiDrive: ${esc(gallery.hidrive_path)}${(limit&&price)?` · ${limit} inkl., je extra ${fmtEur(price)}${tiers.length?` · Rabatt ab ${tiers[0].min}`:""}`:""}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn sm ghost" id="editBtn">Bearbeiten</button>
         <button class="btn sm ghost" id="copyLinkBtn">Kunden-Link</button>
         <button class="btn sm ghost" id="pricingBtn">Preise & Rabatte</button>
         <button class="btn sm ghost" id="welcomeBtn">Willkommen</button>
@@ -513,13 +515,17 @@ function renderAdminGallery(){
       <button class="btn sm ghost" id="aFltFav">❤ Favoriten (${favs.length})</button>
       <button class="btn sm ghost" id="exportSel">Auswahl exportieren</button>
       ${sels.length?`<button class="btn sm ghost" id="aZip">⤓ Auswahl als ZIP</button>`:""}
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn sm ${AdminState.manageMode?'primary':'ghost'}" id="manageBtn">${AdminState.manageMode?'✓ Fertig':'⚙ Bilder verwalten'}</button>
     </div>
+    ${AdminState.manageMode?`<p class="muted2" style="font-size:12px; margin:-6px 0 12px">Verwalten-Modus: Mit den Pfeilen verschiebst du Bilder, mit ✕ löschst du sie. Reihenfolge wird automatisch gespeichert.</p>`:""}
     <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
     <div class="photo-grid" id="aGrid"></div>
   </div>`;
   wireTopbar();
   $("#backBtn").onclick=loadAdminGalleries;
   $("#copyLinkBtn").onclick=()=>copyClientLink(gallery.id);
+  $("#editBtn").onclick=()=>editGallery(gallery);
   $("#pricingBtn").onclick=()=>editPricing(gallery);
   $("#welcomeBtn").onclick=()=>editGalleryWelcome(gallery);
   $("#importBtn").onclick=importHidrive;
@@ -530,7 +536,48 @@ function renderAdminGallery(){
   $("#aFltFav").onclick=()=>drawAdminGrid("fav");
   $("#exportSel").onclick=exportSelection;
   const az=$("#aZip"); if(az) az.onclick=adminDownloadZip;
+  $("#manageBtn").onclick=()=>{ AdminState.manageMode=!AdminState.manageMode; renderAdminGallery(); };
   drawAdminGrid("all");
+}
+
+function editGallery(gallery){
+  showModal(`<h3>Galerie bearbeiten</h3>
+    <label class="fld"><span>Titel</span><input class="inp" id="egTitle" value="${esc(gallery.title)}"></label>
+    <label class="fld"><span>Kundenname</span><input class="inp" id="egClient" value="${esc(gallery.client_name||'')}" placeholder="optional"></label>
+    <label class="fld"><span>Neue PIN (leer lassen = unverändert)</span><input class="inp" id="egPin" inputmode="numeric" placeholder="•••• unverändert"></label>
+    <label class="fld"><span>HiDrive-Ordner</span><input class="inp" id="egPath" value="${esc(gallery.hidrive_path)}"></label>
+    <p class="muted2" style="font-size:12px; margin:-6px 0 12px">Achtung: Änderst du den Ordner, finden bereits importierte Bilder ihren Pfad ggf. nicht mehr.</p>
+    <div style="display:flex; gap:18px; margin:4px 0 10px">
+      <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="egWm" ${gallery.watermark_enabled?'checked':''}> Wasserzeichen</label>
+      <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="egDl" ${gallery.download_enabled?'checked':''}> Download erlauben</label>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:16px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mS">Speichern</button>
+    </div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mS").onclick=async()=>{
+      const title=$("#egTitle").value.trim();
+      const hidrive_path=$("#egPath").value.trim();
+      if(!title||!hidrive_path){ toast("Titel und HiDrive-Ordner dürfen nicht leer sein.", true); return; }
+      const payload={
+        gallery_id:gallery.id, title,
+        client_name:$("#egClient").value.trim()||null,
+        hidrive_path,
+        watermark_enabled:$("#egWm").checked,
+        download_enabled:$("#egDl").checked,
+      };
+      const pin=$("#egPin").value.trim();
+      if(pin) payload.pin=pin;
+      $("#mS").disabled=true; $("#mS").textContent="…";
+      try{
+        await api("admin_update_gallery", payload, AdminState.token);
+        Object.assign(gallery, {title, client_name:payload.client_name, hidrive_path, watermark_enabled:payload.watermark_enabled, download_enabled:payload.download_enabled});
+        if(AdminState.current&&AdminState.current.gallery) Object.assign(AdminState.current.gallery, gallery);
+        toast(pin?"Galerie & PIN gespeichert":"Galerie gespeichert"); close(); renderAdminGallery();
+      }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Speichern"; }
+    };
+  });
 }
 
 function editGalleryWelcome(gallery){
@@ -625,16 +672,74 @@ function drawAdminGrid(filter){
   if(filter==="sel") imgs=imgs.filter(i=>i.selected);
   const grid=$("#aGrid");
   if(!imgs.length){ grid.innerHTML="<div class='empty' style='grid-column:1/-1'>Keine Fotos. Lade welche hoch oder lies den HiDrive-Ordner ein.</div>"; return; }
+  const manage=AdminState.manageMode;
   grid.innerHTML=imgs.map(img=>{
     const cc=AdminState.current.comments.filter(c=>c.image_id===img.id).length;
-    return `<div class="tile ${img.favorited?'is-fav':''} ${img.selected?'is-sel':''}">
+    const idx=images.indexOf(img);
+    return `<div class="tile ${img.favorited?'is-fav':''} ${img.selected?'is-sel':''}" data-imgid="${img.id}">
       <img loading="lazy" src="${thumbUrl(img)}" alt="">
       ${img.selected?`<div class="selbadge" style="pointer-events:none">＋</div>`:""}
       <div class="favbadge" style="pointer-events:none"><svg viewBox="0 0 24 24" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg></div>
       ${cc?`<div class="cmtbadge">💬 ${cc}</div>`:""}
       ${!img.thumb_path?`<div class="cmtbadge" style="left:auto; right:8px; bottom:8px; background:rgba(120,80,0,.7)">kein Thumb</div>`:""}
+      ${manage?`<div style="position:absolute; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; gap:6px">
+        <button class="btn sm" data-move="up" data-id="${img.id}" style="padding:6px 9px"${idx===0?" disabled":""}>←</button>
+        <button class="btn sm danger" data-del-img="${img.id}" style="padding:6px 9px">✕</button>
+        <button class="btn sm" data-move="down" data-id="${img.id}" style="padding:6px 9px"${idx===images.length-1?" disabled":""}>→</button>
+      </div>`:""}
     </div>`;
   }).join("");
+  if(manage){
+    grid.querySelectorAll("[data-del-img]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); deleteImage(b.dataset.delImg); });
+    grid.querySelectorAll("[data-move]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); moveImage(b.dataset.id, b.dataset.move); });
+  }
+}
+
+function moveImage(imageId, dir){
+  const imgs=AdminState.current.images;
+  const i=imgs.findIndex(x=>x.id===imageId);
+  if(i<0) return;
+  const j = dir==="up" ? i-1 : i+1;
+  if(j<0 || j>=imgs.length) return;
+  [imgs[i], imgs[j]] = [imgs[j], imgs[i]];
+  drawAdminGrid("all");
+  // Reihenfolge speichern (debounced)
+  scheduleReorderSave();
+}
+let REORDER_T;
+function scheduleReorderSave(){
+  clearTimeout(REORDER_T);
+  REORDER_T=setTimeout(async()=>{
+    try{
+      const order=AdminState.current.images.map(i=>i.id);
+      await api("admin_reorder_images",{gallery_id:AdminState.current.gallery.id, order}, AdminState.token);
+      toast("Reihenfolge gespeichert");
+    }catch(e){ toast(e.message,true); }
+  }, 700);
+}
+
+function deleteImage(imageId){
+  const img=AdminState.current.images.find(i=>i.id===imageId);
+  if(!img) return;
+  showModal(`<h3>Bild löschen?</h3>
+    <p class="muted" style="margin-top:0">„${esc(img.filename)}" aus der Galerie entfernen.</p>
+    <label style="display:flex; gap:8px; align-items:center; font-size:14px; margin:12px 0"><input type="checkbox" id="delHidrive"> Auch das Original auf HiDrive löschen</label>
+    <p class="muted2" style="font-size:12px; margin:0">Ohne Häkchen bleibt das Original auf HiDrive erhalten; nur die Galerie-Anzeige und das Thumbnail werden entfernt.</p>
+    <div style="display:flex; gap:10px; margin-top:18px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn danger" style="flex:1" id="mD">Löschen</button>
+    </div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mD").onclick=async()=>{
+      const also=$("#delHidrive").checked;
+      $("#mD").disabled=true; $("#mD").textContent="…";
+      try{
+        await api("admin_delete_image",{image_id:imageId, also_hidrive:also}, AdminState.token);
+        AdminState.current.images=AdminState.current.images.filter(i=>i.id!==imageId);
+        toast("Bild gelöscht"); close(); renderAdminGallery();
+      }catch(e){ toast(e.message,true); $("#mD").disabled=false; $("#mD").textContent="Löschen"; }
+    };
+  });
 }
 
 function exportSelection(){
