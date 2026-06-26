@@ -98,10 +98,8 @@
   .tile.is-sel{outline:2px solid var(--accent); outline-offset:-2px}
   .tile .selnum{font-size:12px; font-weight:700}
   .tile .cmtbadge{position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,.6); border-radius:20px; padding:2px 8px; font-size:11px; display:flex; gap:4px; align-items:center}
-  /* Nach Bestätigung: nicht gewählte abdunkeln, gewählte hervorheben */
-  .grid-confirmed .tile:not(.is-sel){opacity:.32; filter:grayscale(.6)}
+  /* Nach Bestätigung: gewählte grün hervorheben (Auswahl bleibt änderbar) */
   .grid-confirmed .tile.is-sel{outline:2px solid var(--ok); outline-offset:-2px}
-  .grid-confirmed .tile:not(.is-sel) .selbadge{display:none}
 
   /* Modal */
   .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.85); backdrop-filter:blur(4px); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px}
@@ -675,8 +673,9 @@ function renderGalleryView(){
     ${confirmed?`<div class="card" style="padding:14px 18px; margin-bottom:18px; border-color:#2a4a2a">
       <div style="display:flex; align-items:center; gap:10px">
         <span style="font-size:20px">✓</span>
-        <div><b style="color:var(--ok)">Auswahl bestätigt</b><div class="muted" style="font-size:13px">${sc} Foto${sc===1?"":"s"} ausgewählt. Die nicht gewählten Bilder sind ausgegraut.</div></div>
+        <div><b style="color:var(--ok)">Auswahl bestätigt</b><div class="muted" style="font-size:13px">${sc} Foto${sc===1?"":"s"} ausgewählt. Du kannst deine Auswahl weiterhin ändern – bestätige danach einfach erneut.</div></div>
       </div>
+      ${limit?`<div style="margin-top:12px"><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px"><span class="muted">Auswahl</span><span class="mono"><b id="selNum">${sc}</b> von ${limit}</span></div><div class="progress"><div id="selBar" style="width:${Math.min(100,sc/limit*100)}%"></div></div></div>`:""}
     </div>`:(limit?`<div class="card" style="padding:14px 18px; margin-bottom:18px">
       <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
         <span class="muted">Deine Auswahl (＋)</span><span class="mono"><b id="selNum">${sc}</b> von ${limit}</span>
@@ -738,7 +737,7 @@ function drawGrid(filter){
     return `<div class="tile ${img.favorited?'is-fav':''} ${img.selected?'is-sel':''}" data-idx="${idx}">
       <img loading="lazy" src="${thumbUrl(img)}" alt="">
       ${wm?`<div class="wm"><img src="${CONFIG.WATERMARK}"></div>`:""}
-      ${confirmed?"":`<div class="selbadge" data-sel="${img.id}">${img.selected?`<span class="selnum">${order}</span>`:"＋"}</div>`}
+      ${`<div class="selbadge" data-sel="${img.id}">${img.selected?`<span class="selnum">${order}</span>`:"＋"}</div>`}
       <div class="favbadge" data-fav="${img.id}">
         <svg viewBox="0 0 24 24" fill="${img.favorited?'#000':'none'}" stroke="${img.favorited?'#000':'#fff'}" stroke-width="2"><path d="M12 21s-7-4.5-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.5 4.5 3 1-1.5 2.5-3 4.5-3 3.5 0 5 3.5 3 7C19 16.5 12 21 12 21z"/></svg>
       </div>
@@ -769,7 +768,6 @@ async function toggleFav(imageId){
 }
 
 async function toggleSelect(imageId){
-  if(ClientState.gallery.confirmed){ toast("Auswahl ist bereits bestätigt.", true); return; }
   try{
     const r=await api("gallery_toggle_select",{gallery_id:ClientState.gid, image_id:imageId}, ClientState.token);
     const img=ClientState.images.find(i=>i.id===imageId); if(img) img.selected=r.selected;
@@ -799,13 +797,13 @@ async function downloadZip(which){
 function renderConfirmBar(){
   const bar=$("#confirmBar"); if(!bar) return;
   const g=ClientState.gallery;
-  if(g.confirmed){ bar.innerHTML=""; return; }
   const sc=selCount();
+  const confirmed=g.confirmed;
   bar.innerHTML=`<div style="position:fixed; bottom:0; left:0; right:0; background:rgba(10,10,10,.92); backdrop-filter:blur(10px); border-top:1px solid var(--line); padding:12px 16px; z-index:40">
     <div class="wrap" style="display:flex; align-items:center; gap:12px">
-      <span class="muted" style="font-size:13px" id="cbInfo">${sc} Foto${sc===1?"":"s"} in der Auswahl (＋)</span>
+      <span class="muted" style="font-size:13px" id="cbInfo">${sc} Foto${sc===1?"":"s"} in der Auswahl (＋)${confirmed?' · <span style="color:var(--ok)">bestätigt</span>':''}</span>
       <div class="spacer"></div>
-      <button class="btn primary" id="confirmBtn"${sc===0?" disabled":""}>Auswahl bestätigen</button>
+      <button class="btn primary" id="confirmBtn"${sc===0?" disabled":""}>${confirmed?'Erneut bestätigen':'Auswahl bestätigen'}</button>
     </div></div>`;
   const cb=$("#confirmBtn"); if(cb) cb.onclick=confirmSelection;
 }
@@ -881,7 +879,7 @@ function drawLightbox(){
       <span class="muted2 mono" style="font-size:13px">${ClientState.lb+1} / ${ClientState.images.length}</span>
       <span class="muted" style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(img.filename)}</span>
       <div class="spacer"></div>
-      ${g.confirmed?"":`<button class="btn sm ${img.selected?'primary':''}" id="lbSel">
+      ${`<button class="btn sm ${img.selected?'primary':''}" id="lbSel">
         ${img.selected?`✓ Ausgewählt (${selOrder(img.id)})`:'＋ Auswählen'}
       </button>`}
       <button class="btn sm ${img.favorited?'primary':''}" id="lbFav">
