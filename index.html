@@ -302,32 +302,105 @@ async function loadAdminGalleries(){
   }
 }
 
+// Berechnet Aufpreis (nach Rabatt) für eine Galerie aus der Listen-Anreicherung
+function galleryExtraSum(g){
+  const limit=g.selection_limit||0;
+  const price=(g.extra_price!=null)?Number(g.extra_price):0;
+  const sc=g.selected_count||0;
+  if(!(limit>0 && price>0 && sc>limit)) return { extra:0, sum:0, pct:0 };
+  const extra=sc-limit;
+  const gross=extra*price;
+  const tiers=(Array.isArray(g.discount_tiers)?g.discount_tiers:[])
+    .map(t=>({min:parseInt(t.min),percent:parseFloat(t.percent)}))
+    .filter(t=>t.min>0&&t.percent>0).sort((a,b)=>a.min-b.min);
+  let pct=0; for(const t of tiers){ if(extra>=t.min && t.percent>pct) pct=t.percent; }
+  return { extra, sum: gross-(gross*pct/100), pct };
+}
+// Status einer Galerie für Sortierung + Badge
+function galleryStatus(g){
+  const sc=g.selected_count||0;
+  if(g.confirmed) return "confirmed";
+  if(sc>0) return "selecting";
+  return "empty";
+}
+
 function renderAdminList(){
-  const gs=AdminState.galleries;
+  const gs=AdminState.galleries.slice();
+  const fmtEur=(n)=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(n);
+
+  // --- Statistik ---
+  const total=gs.length;
+  const confirmedCount=gs.filter(g=>g.confirmed).length;
+  const selectingCount=gs.filter(g=>!g.confirmed && (g.selected_count||0)>0).length;
+  const emptyCount=gs.filter(g=>(g.selected_count||0)===0 && !g.confirmed).length;
+  let withExtra=0, extraSumTotal=0;
+  gs.forEach(g=>{ const e=galleryExtraSum(g); if(e.extra>0){ withExtra++; extraSumTotal+=e.sum; } });
+
+  // --- Sortierung: Handlungsbedarf zuerst ---
+  // 1) Auswahl getroffen, noch nicht bestätigt  2) bestätigt  3) leer
+  const rank={ selecting:0, confirmed:1, empty:2 };
+  gs.sort((a,b)=>{
+    const ra=rank[galleryStatus(a)], rb=rank[galleryStatus(b)];
+    if(ra!==rb) return ra-rb;
+    // innerhalb gleicher Gruppe: neuere zuerst
+    return new Date(b.created_at)-new Date(a.created_at);
+  });
+
+  const stat=(label,value,color)=>`<div class="card" style="padding:14px 16px; text-align:center">
+    <div style="font-size:26px; font-weight:700; ${color?`color:${color}`:''}">${value}</div>
+    <div class="muted2" style="font-size:12px; margin-top:2px">${label}</div>
+  </div>`;
+
   app.innerHTML=adminTopbar(`<button class="btn sm primary" id="newGalleryBtn">+ Neue Galerie</button>`)+`
   <div class="wrap" style="padding:22px 16px 60px">
-    <h2 style="margin:0 0 18px; font-size:22px">Galerien</h2>
-    ${gs.length?`<div class="grid-cards">`+gs.map(g=>`
-      <div class="card" data-gid="${g.id}" style="cursor:pointer; transition:.15s">
+    <h2 style="margin:0 0 16px; font-size:22px">Übersicht</h2>
+    ${total?`<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin-bottom:24px">
+      ${stat("Galerien", total)}
+      ${stat("Auswahl offen", selectingCount, selectingCount?"#f5c451":null)}
+      ${stat("Bestätigt", confirmedCount, confirmedCount?"var(--ok)":null)}
+      ${stat("Mit Aufpreis", withExtra, withExtra?"#f5c451":null)}
+      ${extraSumTotal>0?stat("Aufpreis gesamt", fmtEur(extraSumTotal)):""}
+    </div>`:""}
+
+    <h3 style="margin:0 0 14px; font-size:16px">Galerien</h3>
+    ${gs.length?`<div class="grid-cards">`+gs.map(g=>{
+      const st=galleryStatus(g);
+      const ext=galleryExtraSum(g);
+      const sc=g.selected_count||0;
+      const limit=g.selection_limit||0;
+      const badge = st==="confirmed"
+        ? '<span class="tag" style="border-color:#2a4a2a; color:var(--ok)">✓ bestätigt</span>'
+        : st==="selecting"
+          ? '<span class="tag" style="border-color:#5a4a1a; color:#f5c451">● Auswahl läuft</span>'
+          : '<span class="tag" style="color:var(--muted2)">○ keine Auswahl</span>';
+      const accent = st==="confirmed" ? "var(--ok)" : st==="selecting" ? "#f5c451" : "var(--line)";
+      return `
+      <div class="card" data-gid="${g.id}" style="cursor:pointer; transition:.15s; border-left:3px solid ${accent}">
         <div style="display:flex; align-items:start; gap:10px">
           <div style="flex:1">
             <div style="font-size:17px; font-weight:600">${esc(g.title)}</div>
             ${g.client_name?`<div class="muted" style="font-size:13px">${esc(g.client_name)}</div>`:""}
           </div>
-          ${g.confirmed?'<span class="tag" style="border-color:#2a4a2a; color:var(--ok)">✓ bestätigt</span>':'<span class="tag">offen</span>'}
+          ${badge}
         </div>
         <div class="hr"></div>
-        <div style="display:flex; gap:16px; font-size:13px" class="muted">
+        <div style="display:flex; gap:14px; font-size:13px; flex-wrap:wrap" class="muted">
           <span>${g.image_count} Fotos</span>
-          <span>＋ ${g.selected_count??0} Auswahl</span>
+          <span>＋ ${sc}${limit?" / "+limit:""} Auswahl</span>
           <span>❤ ${g.favorite_count} Fav</span>
         </div>
+        ${ext.extra>0?`<div style="margin-top:10px; background:var(--panel2); border:1px solid var(--line2); border-radius:5px; padding:8px 11px; display:flex; justify-content:space-between; align-items:center; font-size:13px">
+          <span>${ext.extra} Extra-Foto${ext.extra===1?"":"s"}${ext.pct>0?` <span class="muted2">−${ext.pct}%</span>`:""}</span>
+          <b>${fmtEur(ext.sum)}</b>
+        </div>`:""}
+        ${(st==="confirmed"&&g.confirmed_at)?`<div class="muted2" style="font-size:11px; margin-top:8px">bestätigt am ${new Date(g.confirmed_at).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})} ${new Date(g.confirmed_at).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div>`:""}
         <div style="margin-top:12px; display:flex; gap:8px">
           <button class="btn sm" data-open="${g.id}">Öffnen</button>
           <button class="btn sm ghost" data-link="${g.id}">Link</button>
           <button class="btn sm danger" data-del="${g.id}">Löschen</button>
         </div>
-      </div>`).join("")+`</div>`
+      </div>`;
+    }).join("")+`</div>`
     :`<div class="empty">Noch keine Galerien.<br><br><button class="btn primary" id="emptyNew">+ Erste Galerie anlegen</button></div>`}
   </div>`;
   wireTopbar();
