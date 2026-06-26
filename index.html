@@ -134,7 +134,9 @@ const CONFIG = {
   FN_URL: "https://ugitunttmvswyxmyhnjb.supabase.co/functions/v1/picshare",
   THUMB_BASE: "https://ugitunttmvswyxmyhnjb.supabase.co/storage/v1/object/public/picshare-thumbs/",
   // Logo-Wasserzeichen (Daten-URL oder https). Platzhalter -> in Admin änderbar (localStorage).
-  WATERMARK: localStorage.getItem("picshare_wm") || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 60'><text x='100' y='40' font-family='Arial' font-size='30' font-weight='bold' text-anchor='middle' fill='white'>LOGO</text></svg>"
+  WATERMARK: localStorage.getItem("picshare_wm") || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 60'><text x='100' y='40' font-family='Arial' font-size='30' font-weight='bold' text-anchor='middle' fill='white'>LOGO</text></svg>",
+  // Standard-Willkommenstext (Admin änderbar, pro Galerie überschreibbar)
+  WELCOME_DEFAULT: localStorage.getItem("picshare_welcome") || "Herzlich willkommen zu deiner persönlichen Foto-Galerie!\n\nSchau dir die Bilder in Ruhe an und markiere deine Favoriten mit dem Herz-Symbol. Über das Kommentarfeld kannst du mir zu einzelnen Fotos Notizen hinterlassen.\n\nWenn du deine Auswahl getroffen hast, bestätige sie unten – ich kümmere mich dann um die Bearbeitung.\n\nViel Freude beim Aussuchen!\nAlexander Scherer"
 };
 
 // ======= STATE / HELPERS =======
@@ -199,13 +201,66 @@ function adminTopbar(extra=""){
   return `<header class="topbar"><div class="wrap"><div class="row">
     <div class="brand"><span class="dot"></span> PicShare <span class="muted2" style="font-weight:400; font-size:13px">Admin</span></div>
     <div class="spacer"></div>${extra}
-    <button class="btn sm ghost" id="wmBtn">Logo</button>
+    <button class="btn sm ghost" id="settingsBtn">Einstellungen</button>
     <button class="btn sm ghost" id="logoutBtn">Abmelden</button>
   </div></div></header>`;
 }
 function wireTopbar(){
   $("#logoutBtn").onclick=()=>{ localStorage.removeItem("picshare_atok"); AdminState.token=null; renderAdminLogin(); };
-  $("#wmBtn").onclick=editWatermark;
+  $("#settingsBtn").onclick=openSettings;
+}
+function openSettings(){
+  showModal(`<h3>Einstellungen</h3>
+    <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px">
+      <button class="btn ghost" id="sLogo" style="justify-content:flex-start">🖼️ Logo-Wasserzeichen</button>
+      <button class="btn ghost" id="sWelcome" style="justify-content:flex-start">✉️ Standard-Willkommenstext</button>
+      <button class="btn ghost" id="sPass" style="justify-content:flex-start">🔑 Passwort ändern</button>
+      <div class="hr" style="margin:6px 0"></div>
+      <button class="btn ghost" id="sImpressum" style="justify-content:flex-start">📄 Impressum</button>
+      <button class="btn ghost" id="sDatenschutz" style="justify-content:flex-start">🔒 Datenschutz</button>
+    </div>
+    <button class="btn primary" id="sClose" style="width:100%; justify-content:center; margin-top:18px">Schließen</button>`,(close)=>{
+    $("#sClose").onclick=close;
+    $("#sLogo").onclick=()=>{ close(); editWatermark(); };
+    $("#sWelcome").onclick=()=>{ close(); editWelcomeDefault(); };
+    $("#sPass").onclick=()=>{ close(); changePassword(); };
+    $("#sImpressum").onclick=()=>{ close(); showLegal("impressum"); };
+    $("#sDatenschutz").onclick=()=>{ close(); showLegal("datenschutz"); };
+  });
+}
+function editWelcomeDefault(){
+  showModal(`<h3>Standard-Willkommenstext</h3>
+    <p class="muted" style="margin-top:0; font-size:13px">Wird allen Kunden beim Öffnen einer Galerie angezeigt – sofern die Galerie keinen eigenen Text hat. Zeilenumbrüche werden übernommen.</p>
+    <label class="fld"><textarea class="inp" id="wdText" style="min-height:180px">${esc(CONFIG.WELCOME_DEFAULT)}</textarea></label>
+    <div style="display:flex; gap:10px; margin-top:8px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mS">Speichern</button>
+    </div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mS").onclick=()=>{ const v=$("#wdText").value; CONFIG.WELCOME_DEFAULT=v; localStorage.setItem("picshare_welcome",v); toast("Standardtext gespeichert"); close(); };
+  });
+}
+function changePassword(){
+  showModal(`<h3>Passwort ändern</h3>
+    <label class="fld"><span>Aktuelles Passwort</span><input class="inp" id="cpCur" type="password" autocomplete="current-password"></label>
+    <label class="fld"><span>Neues Passwort</span><input class="inp" id="cpNew" type="password" autocomplete="new-password" placeholder="mind. 6 Zeichen"></label>
+    <label class="fld"><span>Neues Passwort wiederholen</span><input class="inp" id="cpNew2" type="password" autocomplete="new-password"></label>
+    <div style="display:flex; gap:10px; margin-top:8px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mS">Ändern</button>
+    </div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mS").onclick=async()=>{
+      const cur=$("#cpCur").value, n1=$("#cpNew").value, n2=$("#cpNew2").value;
+      if(n1.length<6){ toast("Neues Passwort: mind. 6 Zeichen", true); return; }
+      if(n1!==n2){ toast("Passwörter stimmen nicht überein", true); return; }
+      $("#mS").disabled=true; $("#mS").textContent="…";
+      try{
+        await api("admin_change_password",{current_password:cur, new_password:n1}, AdminState.token);
+        toast("Passwort geändert ✓"); close();
+      }catch(e){ toast(e.message, true); $("#mS").disabled=false; $("#mS").textContent="Ändern"; }
+    };
+  });
 }
 function editWatermark(){
   showModal(`<h3>Logo-Wasserzeichen</h3>
@@ -300,6 +355,7 @@ function newGalleryModal(){
       <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="gWm" checked> Wasserzeichen</label>
       <label style="display:flex; gap:7px; align-items:center; font-size:14px"><input type="checkbox" id="gDl" checked> Download erlauben</label>
     </div>
+    <label class="fld"><span>Willkommenstext (optional – leer = Standardtext)</span><textarea class="inp" id="gWelcome" placeholder="Eigener Begrüßungstext für diese Galerie…" style="min-height:90px"></textarea></label>
     <div style="display:flex; gap:10px; margin-top:16px"><button class="btn ghost" style="flex:1" id="mC">Abbrechen</button><button class="btn primary" style="flex:1" id="mS">Anlegen</button></div>`,(close)=>{
     $("#mC").onclick=close;
     $("#mS").onclick=async()=>{
@@ -308,7 +364,7 @@ function newGalleryModal(){
       const limit=$("#gLimit").value? parseInt($("#gLimit").value):null;
       $("#mS").disabled=true; $("#mS").textContent="…";
       try{
-        await api("admin_create_gallery",{title, client_name:$("#gClient").value.trim()||null, pin, hidrive_path, selection_limit:limit, watermark_enabled:$("#gWm").checked, download_enabled:$("#gDl").checked}, AdminState.token);
+        await api("admin_create_gallery",{title, client_name:$("#gClient").value.trim()||null, pin, hidrive_path, selection_limit:limit, watermark_enabled:$("#gWm").checked, download_enabled:$("#gDl").checked, welcome_text:$("#gWelcome").value.trim()||null}, AdminState.token);
         toast("Galerie angelegt"); close(); loadAdminGalleries();
       }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Anlegen"; }
     };
@@ -338,6 +394,7 @@ function renderAdminGallery(){
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn sm ghost" id="copyLinkBtn">Kunden-Link</button>
+        <button class="btn sm ghost" id="welcomeBtn">Willkommen</button>
         <button class="btn sm ghost" id="importBtn">HiDrive einlesen</button>
         <button class="btn sm primary" id="uploadBtn">+ Hochladen</button>
       </div>
@@ -354,6 +411,7 @@ function renderAdminGallery(){
   wireTopbar();
   $("#backBtn").onclick=loadAdminGalleries;
   $("#copyLinkBtn").onclick=()=>copyClientLink(gallery.id);
+  $("#welcomeBtn").onclick=()=>editGalleryWelcome(gallery);
   $("#importBtn").onclick=importHidrive;
   $("#uploadBtn").onclick=()=>$("#fileInput").click();
   $("#fileInput").onchange=handleUpload;
@@ -361,6 +419,29 @@ function renderAdminGallery(){
   $("#aFltFav").onclick=()=>drawAdminGrid("fav");
   $("#exportFav").onclick=exportFavorites;
   drawAdminGrid("all");
+}
+
+function editGalleryWelcome(gallery){
+  const cur = gallery.welcome_text || "";
+  showModal(`<h3>Willkommenstext – ${esc(gallery.title)}</h3>
+    <p class="muted" style="margin-top:0; font-size:13px">Eigener Text für diese Galerie. Leer lassen, um den Standardtext zu verwenden.</p>
+    <label class="fld"><textarea class="inp" id="gwText" style="min-height:170px" placeholder="Leer = Standardtext">${esc(cur)}</textarea></label>
+    <div style="display:flex; gap:10px; margin-top:8px">
+      <button class="btn ghost" style="flex:1" id="mC">Abbrechen</button>
+      <button class="btn primary" style="flex:1" id="mS">Speichern</button>
+    </div>`,(close)=>{
+    $("#mC").onclick=close;
+    $("#mS").onclick=async()=>{
+      const txt=$("#gwText").value.trim();
+      $("#mS").disabled=true; $("#mS").textContent="…";
+      try{
+        await api("admin_update_gallery",{gallery_id:gallery.id, welcome_text:txt}, AdminState.token);
+        gallery.welcome_text=txt||null;
+        if(AdminState.current && AdminState.current.gallery) AdminState.current.gallery.welcome_text=txt||null;
+        toast("Willkommenstext gespeichert"); close();
+      }catch(e){ toast(e.message,true); $("#mS").disabled=false; $("#mS").textContent="Speichern"; }
+    };
+  });
 }
 
 function drawAdminGrid(filter){
@@ -501,8 +582,14 @@ function renderPinGate(msg){
         placeholder="PIN eingeben" style="text-align:center; letter-spacing:4px; font-size:20px" autofocus></label>
       ${msg?`<p style="color:var(--danger); font-size:13px; margin:-6px 0 14px">${esc(msg)}</p>`:""}
       <button class="btn primary" id="pinBtn" style="width:100%; justify-content:center">Galerie öffnen</button>
+      <div style="margin-top:20px; display:flex; gap:14px; justify-content:center; font-size:12px" class="muted2">
+        <a href="#" id="footImpressum" style="color:inherit; text-decoration:none">Impressum</a>
+        <span>·</span>
+        <a href="#" id="footDatenschutz" style="color:inherit; text-decoration:none">Datenschutz</a>
+      </div>
     </div>
   </div>`;
+  wireLegalFooter();
   const go=async()=>{
     const pin=$("#pinInput").value.trim();
     if(!pin) return;
@@ -558,12 +645,31 @@ function renderGalleryView(){
       <button class="btn sm ghost" id="fltFav">★ Favoriten</button>
     </div>
     <div class="photo-grid" id="grid"></div>
+    ${legalFooter()}
   </div>
   <div id="confirmBar"></div>`;
   $("#fltAll").onclick=()=>drawGrid("all");
   $("#fltFav").onclick=()=>drawGrid("fav");
   drawGrid("all");
   renderConfirmBar();
+  wireLegalFooter();
+  showWelcome();
+}
+
+function showWelcome(){
+  const g=ClientState.gallery;
+  const text=(g.welcome_text && g.welcome_text.trim()) ? g.welcome_text : CONFIG.WELCOME_DEFAULT;
+  if(!text || !text.trim()) return;
+  const html=esc(text).replace(/\n/g,"<br>");
+  const bg=document.createElement("div"); bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:520px">
+    <h3 style="margin-bottom:8px">Willkommen${g.client_name?", "+esc(g.client_name):""}</h3>
+    <div style="font-size:14px; line-height:1.6; color:var(--txt); max-height:50vh; overflow:auto">${html}</div>
+    <button class="btn primary" id="welcomeOk" style="width:100%; justify-content:center; margin-top:20px">Zur Galerie</button>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector("#welcomeOk").onclick=()=>bg.remove();
+  bg.onclick=e=>{ if(e.target===bg) bg.remove(); };
 }
 
 function drawGrid(filter){
@@ -745,6 +851,102 @@ function showModal(html, setup){
   bg.onclick=e=>{ if(e.target===bg) close(); };
   if(setup) setup(close);
   return close;
+}
+
+// ---------- Impressum & Datenschutz ----------
+const LEGAL = {
+  impressum: `
+    <h3>Impressum</h3>
+    <div style="font-size:14px; line-height:1.7; max-height:60vh; overflow:auto">
+      <p style="margin:0 0 12px"><b>Angaben gemäß § 5 DDG (TMG)</b></p>
+      <p style="margin:0 0 12px">
+        Alexander Scherer<br>
+        Mertensstraße 18<br>
+        13587 Berlin<br>
+        Deutschland
+      </p>
+      <p style="margin:0 0 12px"><b>Kontakt</b><br>
+        E-Mail: info@alexander-scherer.com
+      </p>
+      <p style="margin:0 0 12px"><b>Tätigkeit</b><br>
+        Fotografie · Kleingewerbe<br>
+        Umsatzsteuerbefreit gemäß § 19 UStG (Kleinunternehmerregelung)
+      </p>
+      <p style="margin:0 0 12px"><b>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</b><br>
+        Alexander Scherer (Anschrift wie oben)
+      </p>
+      <p style="margin:0 0 12px"><b>EU-Streitschlichtung</b><br>
+        Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit:
+        <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener" style="color:#fff">https://ec.europa.eu/consumers/odr</a>.<br>
+        Ich bin nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.
+      </p>
+    </div>`,
+  datenschutz: `
+    <h3>Datenschutzerklärung</h3>
+    <div style="font-size:14px; line-height:1.7; max-height:60vh; overflow:auto">
+      <p style="margin:0 0 12px"><b>1. Verantwortlicher</b><br>
+        Alexander Scherer, Mertensstraße 18, 13587 Berlin, info@alexander-scherer.com
+      </p>
+      <p style="margin:0 0 12px"><b>2. Zweck dieser Anwendung</b><br>
+        Diese Galerie dient der Vorschau und Auswahl von Fotos durch eingeladene Kundinnen und Kunden.
+        Der Zugang erfolgt ausschließlich über einen privaten Link und eine PIN.
+      </p>
+      <p style="margin:0 0 12px"><b>3. Verarbeitete Daten</b></p>
+      <ul style="margin:0 0 12px; padding-left:18px">
+        <li>Vorschaubilder (verkleinerte Versionen der Fotos)</li>
+        <li>Deine Foto-Auswahl (Favoriten-Markierungen)</li>
+        <li>Von dir verfasste Kommentare zu einzelnen Bildern</li>
+        <li>Technische Verbindungsdaten (z. B. IP-Adresse), die beim Aufruf serverseitig anfallen</li>
+      </ul>
+      <p style="margin:0 0 12px"><b>4. Speicherung & Auftragsverarbeiter</b><br>
+        Galeriedaten, Auswahl und Kommentare werden bei <b>Supabase</b> (Server in der EU) gespeichert.
+        Die Original-Fotodateien liegen im persönlichen Cloud-Speicher <b>HiDrive</b> der
+        IONOS SE (Server in Deutschland) und werden nur auf Anforderung über eine gesicherte
+        Schnittstelle bereitgestellt. Mit diesen Dienstleistern bestehen Verträge zur
+        Auftragsverarbeitung gemäß Art. 28 DSGVO.
+      </p>
+      <p style="margin:0 0 12px"><b>5. Rechtsgrundlage</b><br>
+        Die Verarbeitung erfolgt zur Durchführung des fotografischen Auftrags bzw. vorvertraglicher
+        Maßnahmen (Art. 6 Abs. 1 lit. b DSGVO) sowie auf Grundlage berechtigter Interessen an einer
+        sicheren Bereitstellung der Galerie (Art. 6 Abs. 1 lit. f DSGVO).
+      </p>
+      <p style="margin:0 0 12px"><b>6. Speicherdauer</b><br>
+        Die Galerie wird nach Abschluss des Auftrags bzw. spätestens nach Ablauf der vereinbarten
+        Frist gelöscht. Auf Wunsch lösche ich deine Daten jederzeit vorzeitig.
+      </p>
+      <p style="margin:0 0 12px"><b>7. Keine Weitergabe an Dritte</b><br>
+        Eine Weitergabe deiner Daten an Dritte zu Werbezwecken findet nicht statt.
+        Es werden keine Tracking- oder Analyse-Cookies eingesetzt.
+      </p>
+      <p style="margin:0 0 12px"><b>8. Deine Rechte</b><br>
+        Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung,
+        Datenübertragbarkeit und Widerspruch (Art. 15–21 DSGVO) sowie das Recht auf Beschwerde
+        bei einer Aufsichtsbehörde. Zuständig ist die Berliner Beauftragte für Datenschutz und
+        Informationsfreiheit. Wende dich für alle Anliegen an: info@alexander-scherer.com.
+      </p>
+      <p class="muted2" style="margin:14px 0 0; font-size:12px">Stand: ${new Date().toLocaleDateString('de-DE',{month:'long',year:'numeric'})}</p>
+    </div>`
+};
+
+function showLegal(which){
+  showModal(LEGAL[which]+`<button class="btn primary" id="legalOk" style="width:100%; justify-content:center; margin-top:18px">Schließen</button>`,(close)=>{
+    $("#legalOk").onclick=close;
+  });
+}
+
+function legalFooter(){
+  return `<footer style="border-top:1px solid var(--line); margin-top:40px; padding:18px 0; text-align:center">
+    <div style="display:inline-flex; gap:18px; font-size:13px" class="muted">
+      <a href="#" id="footImpressum" style="color:inherit; text-decoration:none">Impressum</a>
+      <span class="muted2">·</span>
+      <a href="#" id="footDatenschutz" style="color:inherit; text-decoration:none">Datenschutz</a>
+    </div>
+  </footer>`;
+}
+function wireLegalFooter(){
+  const i=$("#footImpressum"), d=$("#footDatenschutz");
+  if(i) i.onclick=e=>{ e.preventDefault(); showLegal("impressum"); };
+  if(d) d.onclick=e=>{ e.preventDefault(); showLegal("datenschutz"); };
 }
 
 if(GALLERY_ID){ renderClient(GALLERY_ID); } else { renderAdmin(); }
